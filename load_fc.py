@@ -13,6 +13,6 @@ sq_fc += sq_fc.T
 
 print(sq_fc.shape)
 
-plt.imshow(sq_fc, cmap='hot')
+plt.imshow(sq_fc)
 plt.colorbar()
 plt.show()
