@@ -53,7 +53,7 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
                     decide what to put in here.
 
     """
-    ds = FCMatrixDataset(dataset,data_dir, '25753', None)
+    ds = FCMatrixDataset(dataset, data_dir, '25753', None)
 
     total_size = len(ds)
     train_size = int(.8* total_size)
@@ -66,23 +66,42 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test, batch_size=batch_size, shuffle=True)
 
+
     model = NeuralNetClassifier(
-        binMLP,
+        module=binMLP,
+        module__n_inputs=1485,
         criterion=nn.BCELoss,
-        optimizer=optim.Adama,
+        optimizer=optim.Adam,
         max_epochs=100,
-        batch_size=10,
+        batch_size=batch_size,
         verbose=False,
         device=DEVICE,
     )
     
     # define the grid search parameters
     param_grid = {
-        'module__weight_constraint': [1.0, 2.0, 3.0, 4.0, 5.0],
-        'module__dropout_rate': [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+        'lr': [0.0001, 0.00005, 0.00001],
+        'optimizer__weight_decay': [0.01, 0.001, 0.0001],
+        'module__dropout_rate': [0.0, 0.1, 0.2, 0.5, 0.7],
+        'module__n_hidden': [[512], [512,256,64], [512,256,256,128,64,32,16]]
+
     }
-    grid = GridSearchCV(estimator=model, param_grid=param_grid, n_jobs=-1, cv=3)
-    grid_result = grid.fit(X, y)
+    gs = GridSearchCV(estimator=model, param_grid=param_grid, n_jobs=-1, cv=3)
+    for i, (inputs, targets) in enumerate(train_loader):
+        inputs.to(DEVICE)
+        targets = targets.unsqueeze(1).float().to(DEVICE)
+
+        grid_result = gs.fit(inputs, targets)
+        if i == 2:
+            break
+    print('SEARCH COMPLETE')
+    print("best score: {:.3f}, best params: {}".format(gs.best_score_, gs.best_params_))
+
+    with open(f"../outputs/grid_search/best_param.yml", 'a') as f:
+        f.write(f"{str(gs.best_score_)}\n")
+    with open(f"../outputs/grid_searchbest_param.yml", 'a') as f:
+        f.write(f"{str(gs.best_params_)}\n")
+
 
 
 
@@ -98,26 +117,15 @@ if __name__ == "__main__":
         nargs="+",
         help='Path to dataset contaning eids and labels. Example: "data/gal_eids/gal_data.csv"',
     )
-    parser.add_argument(
-        "--hidden_dims",
-        default=[512, 512, 128, 128, 64, 32],
-        # default=[564],  
-        type=int,
-        nargs="+",
-        help='Hidden dimensionalities to use inside the network. To specify multiple, use " " to separate them. Example: "256 128"',
-    )
-    parser.add_argument(
-        "--use_batch_norm",
-        action="store_true",
-        help="Use this option to add Batch Normalization layers to the MLP.",
-    )
+
+
 
     # Optimizer hyperparameters
-    parser.add_argument("--lr", default=0.00001, type=float, help="Learning rate to use")
+    parser.add_argument("--lr", default=0.0001, type=float, help="Learning rate to use")
     parser.add_argument("--batch_size", default=32, type=int, help="Minibatch size")
 
     # Other hyperparameters
-    parser.add_argument("--epochs", default=50, type=int, help="Max number of epochs")
+    parser.add_argument("--epochs", default=100, type=int, help="Max number of epochs")
     parser.add_argument(
         "--seed", default=42, type=int, help="Seed to use for reproducing results"
     )
@@ -130,5 +138,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     kwargs = vars(args)
+
+    model, val_accuracies, test_accuracy, logging_info = train(**kwargs)
 
 

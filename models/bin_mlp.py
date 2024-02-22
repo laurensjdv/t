@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import torch
 
 class binMLP(nn.Module):
-    def __init__(self, n_inputs, n_hidden, dropout=0.5, weight_constraint=1.0):
+    def __init__(self, n_inputs, n_hidden, dropout=0.5):
         super().__init__()
         
         self.nn = nn.ModuleList()

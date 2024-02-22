@@ -30,10 +30,6 @@ import torch.optim as optim
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-
-
-
-
 def evaluate_model(model, data_loader, num_classes=2):
     """
     Performs the evaluation of the MLP model on a given dataset.
@@ -55,7 +51,6 @@ def evaluate_model(model, data_loader, num_classes=2):
         inputs = batch[0].to(DEVICE)
         targets = batch[1].unsqueeze(1).float().to(DEVICE)
             # targets = targets.unsqueeze(1).float().to(DEVICE)
-  
 
         with torch.no_grad():
             outputs = model(inputs)
@@ -132,7 +127,6 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
 
     train, val, test = random_split(ds, [train_size, val_size, test_size])
 
-
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test, batch_size=batch_size, shuffle=True)
@@ -154,7 +148,6 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
     train_accuracies = np.zeros(epochs)
     val_accuracies = np.zeros(epochs)
     best_val_acc = 0
-
 
     for epoch in range(epochs):
         model.train()
