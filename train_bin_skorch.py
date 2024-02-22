@@ -74,7 +74,7 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
         optimizer=optim.Adam,
         max_epochs=100,
         batch_size=batch_size,
-        verbose=False,
+        verbose=1,
         device=DEVICE,
     )
     
@@ -86,7 +86,7 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
         'module__n_hidden': [[512], [512,256,64], [512,256,256,128,64,32,16]]
 
     }
-    gs = GridSearchCV(estimator=model, param_grid=param_grid, n_jobs=-1, cv=3)
+    gs = GridSearchCV(estimator=model, param_grid=param_grid, n_jobs=-1, refit=False, scoring='accuracy', verbose=1, cv=2)
     for i, (inputs, targets) in enumerate(train_loader):
         inputs.to(DEVICE)
         targets = targets.unsqueeze(1).float().to(DEVICE)
@@ -122,7 +122,7 @@ if __name__ == "__main__":
 
     # Optimizer hyperparameters
     parser.add_argument("--lr", default=0.0001, type=float, help="Learning rate to use")
-    parser.add_argument("--batch_size", default=32, type=int, help="Minibatch size")
+    parser.add_argument("--batch_size", default=64, type=int, help="Minibatch size")
 
     # Other hyperparameters
     parser.add_argument("--epochs", default=100, type=int, help="Max number of epochs")
