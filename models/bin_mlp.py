@@ -14,6 +14,8 @@ class binMLP(nn.Module):
             else:
                 self.nn.append(nn.Linear(n_hidden[i - 1], n_hidden[i]))
             self.nn.append(nn.ReLU())
+
+            self.nn.append(nn.Dropout(dropout))
         
         # Adjusting the output layer for binary classification
         self.nn.append(nn.Linear(n_hidden[-1], 1))

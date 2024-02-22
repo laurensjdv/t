@@ -69,7 +69,7 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
     model = NeuralNetClassifier(
         binMLP,
         criterion=nn.BCELoss,
-        optimizer=optim.Adamax,
+        optimizer=optim.Adama,
         max_epochs=100,
         batch_size=10,
         verbose=False,
