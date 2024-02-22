@@ -42,7 +42,7 @@ def generate_filtered_bulk(df, bulk_df):
 
 
 df = pd.read_csv('ukb_filtered_hariri_mh_upto69.csv', sep=' ')
-df_fc = pd.read_csv('ukb675871_25753.bulk', sep=' ', names = ['eid', 'data-field'])
+df_fc = pd.read_csv('ukb6771_25753.bulk', sep=' ', names = ['eid', 'data-field'])
 
 
 generate_filtered_bulk(df, df_fc)
