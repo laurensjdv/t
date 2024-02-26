@@ -137,8 +137,8 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
     model = binMLP(1485, hidden_dims).to(DEVICE)
     print(model)
 
-    # loss_module = nn.CrossEntropyLoss()
-    loss_module = nn.BCEWithLogitsLoss()
+    loss_module = nn.CrossEntropyLoss()
+    # loss_module = nn.BCEWithLogitsLoss()
     optimizer = optim.SGD(model.parameters(), lr=lr)
     # Training loop including validation
     train_loss = np.zeros(epochs)

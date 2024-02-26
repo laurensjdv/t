@@ -12,15 +12,18 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 
+from imblearn.over_sampling import RandomOverSampler
+
 
 
 from torch.utils.data.dataset import random_split
 from torch.utils.data.sampler import SubsetRandomSampler
 
+from collections import Counter
 
 
 class FCMatrixDataset(Dataset):
-    def __init__(self, ukb_filtered, dir, data_field, mapping):
+    def __init__(self, ukb_filtered, dir, data_field, mapping, oversample=False):
         self.ukb_filtered = pd.read_csv(ukb_filtered, sep=' ')
         self.dir = dir
         self.data_field = data_field
@@ -28,6 +31,10 @@ class FCMatrixDataset(Dataset):
             self.mapping ={'HC': 0, 'single ep.': 1, 'moderate rMDD': 2, 'severe rMDD': 3}
         else:
             self.mapping = [0, 1]
+
+        if oversample:
+            ros = RandomOverSampler(random_state=0)
+
 
 
 
@@ -71,8 +78,10 @@ if __name__ == "__main__":
         labels.extend(label)
         
 
+    test = []
     for matrix, label in test_loader:
         labels.extend(label)
+        test.extend(label)
 
     for matrix, label in val_loader:
         labels.extend(label)
@@ -82,8 +91,14 @@ if __name__ == "__main__":
     label_counts = {0:0, 1:0, 2:0, 3:0}
     for label in labels:
         label_counts[label.item()] += 1
+    
+    test_counts = {0:0, 1:0, 2:0, 3:0}
+    for label in test:
+        test_counts[label.item()] += 1
+
 
     print(label_counts)
+    print(test_counts)
 
     # matrix, label = ds[0]
     # D = 55

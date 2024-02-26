@@ -78,7 +78,7 @@ def evaluate_model(model, data_loader, num_classes=2):
     return metrics, np.mean(losses)
 
 
-def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, data_dir):
+def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, data_dir, dropout, weight_decay):
     """
     Args:
       hidden_dims: A list of ints, specificying the hidden dimensionalities to use in the MLP.
@@ -99,10 +99,9 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
 
     """
 
-    # Set the random seeds for reproducibility
     np.random.seed(seed)
     torch.manual_seed(seed)
-    if torch.cuda.is_available():  # GPU operation have separate seed
+    if torch.cuda.is_available():  # GPU seed
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
         torch.backends.cudnn.determinstic = True
@@ -133,7 +132,8 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
 
     # Initialize model and loss module
     # model = MLP(1485, hidden_dims, 4).to(DEVICE)
-    model = binMLP(1485, hidden_dims).to(DEVICE)
+    # model = binMLP(1485, hidden_dims).to(DEVICE)
+    model = binMLP(n_inputs=1485, n_hidden=hidden_dims, dropout=dropout).to(DEVICE)
     print(model)
 
     # print model weights
@@ -141,7 +141,7 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
     # loss_module = nn.CrossEntropyLoss()
     # loss_module = nn.BCEWithLogitsLoss()
     loss_module = nn.BCELoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     # Training loop including validation
     train_loss = np.zeros(epochs)
     val_losses = np.zeros(epochs)
@@ -227,14 +227,11 @@ if __name__ == "__main__":
         nargs="+",
         help='Hidden dimensionalities to use inside the network. To specify multiple, use " " to separate them. Example: "256 128"',
     )
-    parser.add_argument(
-        "--use_batch_norm",
-        action="store_true",
-        help="Use this option to add Batch Normalization layers to the MLP.",
-    )
 
     # Optimizer hyperparameters
     parser.add_argument("--lr", default=0.00001, type=float, help="Learning rate to use")
+    parser.add_argument("--weight_decay", default=0.0001, type=float, help="Weight decay to use")
+    parser.add_argument("--dropout", default=0.1, type=float, help="Dropout rate to use")
     parser.add_argument("--batch_size", default=32, type=int, help="Minibatch size")
 
     # Other hyperparameters
@@ -275,6 +272,8 @@ if __name__ == "__main__":
 
     # add legend to confusion matrix
     plt.colorbar()
+    # set color range from 0 to max value in confusion matrix
+    plt.clim(0, max(test_metrics["conf_mat"].flatten()))
     # add axis labels to confusion matrix
     plt.xlabel("predicted")
     plt.ylabel("true")
