@@ -27,7 +27,8 @@ import torch.nn as nn
 import torch.optim as optim
 
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cpu")
 
 
 def evaluate_model(model, data_loader, num_classes=2):
@@ -78,12 +79,11 @@ def evaluate_model(model, data_loader, num_classes=2):
     return metrics, np.mean(losses)
 
 
-def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, data_dir, dropout, weight_decay):
+def train(dataset, hidden_dims, lr, batch_size, epochs, seed, data_dir, dropout, weight_decay):
     """
     Args:
       hidden_dims: A list of ints, specificying the hidden dimensionalities to use in the MLP.
       lr: Learning rate of the SGD to apply.
-      use_batch_norm: If True, adds batch normalization layer into the network.
       batch_size: Minibatch size for the data loaders.
       epochs: Number of training epochs to perform.
       seed: Seed to use for reproducible results.
@@ -116,7 +116,7 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
     #     cifar10, batch_size=batch_size, return_numpy=False
     # )
 
-    ds = FCMatrixDataset(dataset,data_dir, '25753', None)
+    ds = FCMatrixDataset(dataset,data_dir, '25751', None)
     
 
     total_size = len(ds)
@@ -164,6 +164,9 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
             # Forward pass
             outputs = model(inputs)
             loss = loss_module(outputs, targets)
+            loss += model.l1_reg()
+            loss += model.l2_reg()
+            
             train_losses.append(float(loss))
             
             pred = torch.round(outputs).detach()
@@ -221,8 +224,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--hidden_dims",
-        default=[512, 512, 128, 128, 64, 32],
-        # default=[564],  
+        # default=[512, 512, 128, 128, 64, 32],
+        # default=[564],
+        default= [],
         type=int,
         nargs="+",
         help='Hidden dimensionalities to use inside the network. To specify multiple, use " " to separate them. Example: "256 128"',
@@ -241,7 +245,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--data_dir",
-        default="data/fetched/25753_gal",
+        default="data/fetched/25751_gal",
         type=str,
         help="Data directory where to find the dataset.",
     )

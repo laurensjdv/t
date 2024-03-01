@@ -57,7 +57,7 @@ class FCMatrixDataset(Dataset):
 
 if __name__ == "__main__":
     # ds = FCMatrixDataset('data/ukb_filtered_25753_harir_mh_upto69.csv','data/fetched/25753', '25753')
-    ds = FCMatrixDataset('data/gal_eids/gal_data.csv','data/fetched/25753_gal', '25753', None)
+    ds = FCMatrixDataset('data/gal_eids/gal_data.csv','data/fetched/25755_gal', '25755', None)
     total_size = len(ds)
     train_size = int(.8* total_size)
     val_size = int(.1 * total_size)
@@ -86,7 +86,7 @@ if __name__ == "__main__":
     for matrix, label in val_loader:
         labels.extend(label)
     # matrix, label = next(iter(train_loader))
-    print(matrix)
+    print(matrix.shape)
 
     label_counts = {0:0, 1:0, 2:0, 3:0}
     for label in labels:
