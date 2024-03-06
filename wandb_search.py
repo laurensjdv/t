@@ -129,48 +129,55 @@ if __name__ == "__main__":
     args = parser.parse_args()
     kwargs = vars(args)
 
-    sweep_config = {
-    'method': 'random'
-    }
+    # sweep_config = {
+    # 'method': 'random'
+    # }
 
     # sweep_config['metric'] = {
     # 'name': 'loss',
     # 'goal': 'minimize'   
     # }
 
-    sweep_config['metric'] = {
-        'name': 'accuracy',
-        'goal': 'maximize'
-    }
+    # sweep_config['metric'] = {
+    #     'name': 'accuracy',
+    #     'goal': 'maximize'
+    # }
 
-    parameters_dict = {
-    'optimizer': {
-        'values': ['adam', 'sgd']
-        },
-    'fc_layer_size': {
-        'values': [128, 256, 512]
-        },
-    'dropout': {
-          'distribution': 'uniform',
-          'min': 0.0,
-          'max': 1.0
-        },
-    'learning_rate': {
-        'distribution': 'uniform',
-        'min': 1e-4,
-        'max': 1e-6
-      },
-    'batch_size': {
-        # integers between 32 and 256
-        # with evenly-distributed logarithms 
-        'distribution': 'q_log_uniform_values',
-        'q': 8,
-        'min': 32,
-        'max': 512
-      }
-    }
+    # parameters_dict = {
+    # 'optimizer': {
+    #     'values': ['adam', 'sgd']
+    #     },
+    # 'fc_layer_size': {
+    #     'values': [128, 256, 512]
+    #     },
+    # 'dropout': {
+    #       'distribution': 'uniform',
+    #       'min': 0.0,
+    #       'max': 1.0
+    #     },
+    # 'learning_rate': {
+    #     'distribution': 'uniform',
+    #     'min': 1e-4,
+    #     'max': 1e-6
+    #   },
+    # 'batch_size': {
+    #     # integers between 32 and 256
+    #     # with evenly-distributed logarithms 
+    #     'distribution': 'q_log_uniform_values',
+    #     'q': 8,
+    #     'min': 32,
+    #     'max': 512
+    #   }
+    # }
 
-sweep_config['parameters'] = parameters_dict
+    sweep_config = 'elasticnet_config.yaml'
+
+    sweep_id = wandb.sweep(sweep_config, project="pytorch-sweeps-demo")
+
+    # sweep_config['parameters'] = parameters_dict
+
+
+    wandb.agent(sweep_id, train, count=5)
 
     
 
