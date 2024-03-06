@@ -4,7 +4,7 @@ import torch
 
 
 class binMLP(nn.Module):
-    def __init__(self, n_inputs, n_hidden, dropout=0.5, l1_lambda=0.0, l2_lambda=0.0):
+    def __init__(self, n_inputs, n_hidden, dropout=0.5):
         super().__init__()
         self.nn = nn.ModuleList()
 
@@ -14,15 +14,13 @@ class binMLP(nn.Module):
             else:
                 self.nn.append(nn.Linear(n_hidden[i - 1], n_hidden[i]))
             self.nn.append(nn.ReLU())
-
             self.nn.append(nn.Dropout(dropout))
 
-        # Adjusting the output layer for binary classification
+        # Append inputs if no hidden layers
         if len(n_hidden) == 0:
             self.nn.append(nn.Linear(n_inputs, 1))
         else:
             self.nn.append(nn.Linear(n_hidden[-1], 1))
-        # self.nn.append(nn.Linear(n_hidden[-1], 1))
 
     def forward(self, x):
         out = x

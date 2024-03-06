@@ -10,16 +10,60 @@ import os
 import numpy as np
 
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, Subset
 
 from imblearn.over_sampling import RandomOverSampler
 
 
-
-from torch.utils.data.dataset import random_split
-from torch.utils.data.sampler import SubsetRandomSampler
-
 from collections import Counter
+
+def balanced_random_split(dataset, lengths):
+    """
+    Args:
+      dataset: A torch.utils.data.Dataset instance.
+      lengths: A list of ints, specifying the lengths of the splits to make.
+    Returns:
+      A list of torch.utils.data.SubsetRandomSampler instances, one for each split.
+    """
+    # Get the number of items in the dataset
+    n = len(dataset)
+
+    # get index of first instance of class 1
+    m = int(n/2)
+
+    class_0_idx = list(range(m))
+    class_1_idx = list(range(m, n))
+    # Create a list of indices for the dataset
+
+    c0_lengths = [int(l/2) for l in lengths]
+    c1_lengths = [l - c0 for l, c0 in zip(lengths, c0_lengths)]
+    c0_split_indices = [class_0_idx[i:i + l] for i, l in enumerate(c0_lengths)]
+    c1_split_indices = [class_1_idx[i:i + l] for i, l in enumerate(c1_lengths)]
+
+    # shuffle the indices
+    # for i in range(len(c0_split_indices)):
+    #     np.random.shuffle(c0_split_indices[i])
+    #     np.random.shuffle(c1_split_indices[i])
+
+    # combine the indices
+        
+    split_indices = [c0 + c1 for c0, c1 in zip(c0_split_indices, c1_split_indices)]
+
+    # shuffle the indices
+
+    for i in range(len(split_indices)):
+        np.random.shuffle(split_indices[i])
+
+    # create a list of subset samplers
+    samplers = [Subset(dataset, indices) for indices in split_indices]
+
+    return samplers
+
+
+
+    
+
+
 
 
 class FCMatrixDataset(Dataset):
@@ -34,8 +78,6 @@ class FCMatrixDataset(Dataset):
 
         if oversample:
             ros = RandomOverSampler(random_state=0)
-
-
 
 
     def __len__(self):
@@ -63,7 +105,7 @@ if __name__ == "__main__":
     val_size = int(.1 * total_size)
     test_size = total_size - train_size - val_size
 
-    train, val, test = random_split(ds, [train_size, val_size, test_size])
+    train, val, test = balanced_random_split(ds, [train_size, val_size, test_size])
 
     batch_size = 128
 
@@ -71,35 +113,25 @@ if __name__ == "__main__":
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test, batch_size=batch_size, shuffle=True)
 
-    labels = []
+    train_counts = {0: 0, 1: 0, 2: 0, 3: 0}
+    val_counts = {0: 0, 1: 0, 2: 0, 3: 0}
+    test_counts = {0: 0, 1: 0, 2: 0, 3: 0}
 
-    for matrix, label in train_loader:
-        print(label)
-        labels.extend(label)
-        
-
-    test = []
-    for matrix, label in test_loader:
-        labels.extend(label)
-        test.extend(label)
-
-    for matrix, label in val_loader:
-        labels.extend(label)
-    # matrix, label = next(iter(train_loader))
-    print(matrix.shape)
-
-    label_counts = {0:0, 1:0, 2:0, 3:0}
-    for label in labels:
-        label_counts[label.item()] += 1
+    for i, (inputs, targets) in enumerate(train_loader):
+        for t in targets:
+            train_counts[t.item()] += 1
     
-    test_counts = {0:0, 1:0, 2:0, 3:0}
-    for label in test:
-        test_counts[label.item()] += 1
+    for i, (inputs, targets) in enumerate(val_loader):
+        for t in targets:
+            val_counts[t.item()] += 1
 
+    for i, (inputs, targets) in enumerate(test_loader):
+        for t in targets:
+            test_counts[t.item()] += 1
 
-    print(label_counts)
+    print(train_counts)
+    print(val_counts)
     print(test_counts)
-
     # matrix, label = ds[0]
     # D = 55
     # sq_fc = np.zeros((D,D))
@@ -111,3 +143,13 @@ if __name__ == "__main__":
     # plt.imshow(sq_fc)
     # plt.colorbar()
     # plt.show()
+
+    # for i, (inputs, targets) in enumerate(ds):
+    #     print(i, targets)
+
+    l = int(len(ds)/2)
+    print(l)
+    # print(ds[0])
+    print(ds[l-1][1])
+    print(ds[l][1])
+    print(ds[l+1][1])

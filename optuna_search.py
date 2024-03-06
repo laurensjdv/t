@@ -12,6 +12,7 @@ from tqdm.auto import tqdm
 from models.mlp import MLP
 from models.bin_mlp import binMLP
 from dataloader import FCMatrixDataset
+from dataloader import balanced_random_split
 
 import optuna
 from optuna.trial import TrialState
@@ -37,8 +38,8 @@ from imblearn.over_sampling import RandomOverSampler
 from sklearn.linear_model import ElasticNet
 
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+# DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cpu")
 
 def evaluate_model(model, data_loader, num_classes=2):
     """
@@ -51,7 +52,7 @@ def evaluate_model(model, data_loader, num_classes=2):
         metrics: A dictionary calculated using the conversion of the confusion matrix to metrics.
     """
     model.eval()
-    loss_module = nn.CrossEntropyLoss()
+    loss_module = nn.BCELoss()
     losses = []
 
     all_preds = []
@@ -59,35 +60,36 @@ def evaluate_model(model, data_loader, num_classes=2):
 
     for batch in data_loader:
         inputs = batch[0].to(DEVICE)
-        targets = batch[1].to(DEVICE)
+        targets = batch[1].unsqueeze(1).float().to(DEVICE)
+            # targets = targets.unsqueeze(1).float().to(DEVICE)
 
         with torch.no_grad():
             outputs = model(inputs)
             loss = loss_module(outputs, targets)
-            _, pred = torch.max(outputs, 1)
+            pred = torch.round(outputs).detach()
+
 
         losses.append(loss.item())
         all_preds.extend(pred.cpu().numpy())
         all_targets.extend(targets.cpu().numpy())
-    cm = confusion_matrix(all_targets, all_preds, labels=range(num_classes))
-    precision, recall, f1, _ = precision_recall_fscore_support(
-        all_targets, all_preds, labels=range(num_classes), average=None
-    )
+        
+    cm = confusion_matrix(all_targets, all_preds, labels = range(num_classes))
+    # precision, recall, f1, _ = precision_recall_fscore_support(all_targets, all_preds, labels=range(num_classes), average=None)
 
     accuracy = np.trace(cm) / np.sum(cm)
     metrics = {
         "loss": np.mean(losses),
         "accuracy": accuracy,
-        "precision": precision,
-        "recall": recall,
-        "f1": f1,
-        "conf_mat": cm,
+        # "precision": precision,
+        # "recall": recall,
+        # "f1": f1,
+        "conf_mat": cm
     }
 
     return metrics, np.mean(losses)
 
 
-def objective(trial, dataset, seed, data_dir):
+def objective(trial):
     """
     Args:
       hidden_dims: A list of ints, specificying the hidden dimensionalities to use in the MLP.
@@ -108,6 +110,10 @@ def objective(trial, dataset, seed, data_dir):
 
     """
 
+    
+    dataset = "data/gal_eids/gal_data.csv"
+    seed = 100
+    data_dir = "data/fetched/25753_gal"
     # Set the random seeds for reproducibility
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -133,29 +139,46 @@ def objective(trial, dataset, seed, data_dir):
     val_size = int(0.1 * total_size)
     test_size = total_size - train_size - val_size
 
-    train, val, test = random_split(ds, [train_size, val_size, test_size])
+    train, val, test = balanced_random_split(ds, [train_size, val_size, test_size])
 
-    hidden_dims = trial.suggest_categorical(
-        "hidden_dims", [512], [512, 256, 64], [512, 256, 256, 128, 64, 32, 16]
-    )
-    lr = trial.suggest_float("lr", 1e-6, 1e-4, log=True)
+    # hidden_dims = trial.suggest_categorical(
+    #     "hidden_dims", [[512], [512, 256, 64], [512, 256, 256, 128, 64, 32, 16]]
+    # )
+    hidden_dims = [512]
+    lr = trial.suggest_float("lr", 1e-6, 1e-3, log=True)
     batch_size = trial.suggest_int("batch_size", 32, 512, log=True)
-    epochs = trial.suggest_int("epochs", 10, 100, log=True)
-    l1_lambda = trial.suggest_float("l1_lambda", 0, 1, log=True)
+    epochs = trial.suggest_categorical("epochs", [50, 100])
+    l1_lambda = trial.suggest_float("l1_lambda", 0.0, 1.0, log=False)
     l2_lambda = 1 - l1_lambda
+
+    # l1_lambda = 0
+    # l2_lambda = 0
+    dropout = trial.suggest_float("dropout", 0.1, 0.9, log=True)
 
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test, batch_size=batch_size, shuffle=True)
 
+    test = []
+    for matrix, label in val_loader:
+        test.extend(label)
+
+    test_counts = {0:0, 1:0, 2:0, 3:0}
+    for label in test:
+        test_counts[label.item()] += 1
+
+    print(test_counts)
+
     # Initialize model and loss module
     # model = MLP(1485, hidden_dims, 4).to(DEVICE)
-    model = binMLP(1485, hidden_dims).to(DEVICE)
-    print(model)
+    model = binMLP(1485, hidden_dims, dropout).to(DEVICE)
 
-    loss_module = nn.CrossEntropyLoss()
-    # loss_module = nn.BCEWithLogitsLoss()
+   
+
+    # loss_module = nn.CrossEntropyLoss()
+    loss_module = nn.BCELoss()
     optimizer = optim.SGD(model.parameters(), lr=lr)
+    # optimizer= optim.Adam(model.parameters(), lr=lr, weight_decay=0.0001)
     # Training loop including validation
     train_loss = np.zeros(epochs)
     val_losses = np.zeros(epochs)
@@ -169,9 +192,9 @@ def objective(trial, dataset, seed, data_dir):
         train_losses = []
         all_preds = []
         all_targets = []
-        for inputs, targets in tqdm(train_loader):
+        for inputs, targets in train_loader:
             inputs = inputs.to(DEVICE)
-            targets = targets.to(DEVICE)
+            targets = targets.unsqueeze(1).float().to(DEVICE)
 
             # print device of input and targets
 
@@ -181,7 +204,7 @@ def objective(trial, dataset, seed, data_dir):
 
             loss = loss + model.l1_loss(l1_lambda) + model.l2_loss(l2_lambda)
             train_losses.append(float(loss))
-            _, pred = torch.max(outputs, 1)
+            pred = torch.round(outputs).detach()
 
             all_preds.extend(pred.cpu().numpy())
             all_targets.extend(targets.cpu().numpy())
@@ -198,7 +221,7 @@ def objective(trial, dataset, seed, data_dir):
         val_losses[epoch] = val_loss
         val_accuracies[epoch] = val_metrics["accuracy"]
 
-        print(val_metrics["accuracy"])
+        # print(val_metrics["accuracy"])
         trial.report(val_metrics["accuracy"], epoch)
         if val_metrics["accuracy"] > best_val_acc:
             best_val_acc = val_metrics["accuracy"]
@@ -219,7 +242,7 @@ def objective(trial, dataset, seed, data_dir):
         "test_metrics": test_metrics,
     }
 
-    return model, val_accuracies, test_accuracy, logging_info
+    return test_accuracy
 
 
 if __name__ == "__main__":
@@ -234,19 +257,19 @@ if __name__ == "__main__":
         nargs="+",
         help='Path to dataset contaning eids and labels. Example: "data/gal_eids/gal_data.csv"',
     )
-    parser.add_argument(
-        "--model_type",
-        default="bin_mlp",
-        type=str,
-        help='Model to use. Example: "bin_mlp" or "elasticnet',
-    )
+    # parser.add_argument(
+    #     "--model_type",
+    #     default="bin_mlp",
+    #     type=str,
+    #     help='Model to use. Example: "bin_mlp" or "elasticnet',
+    # )
 
     # Optimizer hyperparameters
-    parser.add_argument("--lr", default=0.0001, type=float, help="Learning rate to use")
-    parser.add_argument("--batch_size", default=512, type=int, help="Minibatch size")
+    # parser.add_argument("--lr", default=0.0001, type=float, help="Learning rate to use")
+    # parser.add_argument("--batch_size", default=512, type=int, help="Minibatch size")
 
     # Other hyperparameters
-    parser.add_argument("--epochs", default=100, type=int, help="Max number of epochs")
+    # parser.add_argument("--epochs", default=100, type=int, help="Max number of epochs")
     parser.add_argument(
         "--seed", default=42, type=int, help="Seed to use for reproducing results"
     )
