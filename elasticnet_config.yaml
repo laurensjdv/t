@@ -1,0 +1,28 @@
+program: wandb_search.py
+name: elasticnet_sweep
+method: bayes
+metric:
+  goal: maximize
+  name: accuracy
+parameters:
+  learning_rate:
+    min: 1e-6
+    max: 1e-4
+  batch_size:
+    distribution: q_log_uniform_values
+    q: 8
+    min: 32
+    max: 512
+  epochs:
+    values: [50, 100]
+  optimizer:
+    values: ["adam", "sgd"]
+  dropout:
+    min: 0.0
+    max: 0.9
+  l1_lambda:
+    min: 0.0
+    max: 1.0
+  hidden_dims:
+    values: [[256], [512], [512, 64, 8], [512, 256, 256, 128, 64, 32, 8]]
+    
