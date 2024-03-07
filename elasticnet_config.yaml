@@ -1,6 +1,6 @@
 program: wandb_search.py
 name: elasticnet_sweep
-method: bayes
+method: random
 metric:
   goal: maximize
   name: accuracy
@@ -15,8 +15,6 @@ parameters:
     max: 512
   epochs:
     values: [50, 100]
-  optimizer:
-    values: ["adam", "sgd"]
   dropout:
     min: 0.0
     max: 0.9
