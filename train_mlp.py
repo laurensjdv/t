@@ -126,26 +126,34 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
     test_loader = DataLoader(test, batch_size=batch_size, shuffle=True)
 
     if oversampling:
-        train_X = torch.tensor([batch[0] for batch in train_loader]).to(DEVICE)
-        train_y = torch.tensor([batch[1] for batch in train_loader]).to(DEVICE)
 
-        train_Y_counts = np.bincount(train_y)
+        train_X = torch.tensor([])
+        train_Y = torch.tensor([], dtype=torch.int64)
+        for batch in train_loader:
+            inputs = batch[0]
+            targets = batch[1]
+            train_X = torch.cat((train_X, inputs), 0)
+            train_Y = torch.cat((train_Y, targets), 0)
+
+        train_Y_counts = np.bincount(train_Y)
         train_Y_max = train_Y_counts.max()
         sampling_strategy = {i: train_Y_max for i in range(4)}
         ros = RandomOverSampler(random_state=seed, sampling_strategy=sampling_strategy)
 
-        train_X_resampled, train_y_resampled = ros.fit_resample(train_X, train_y)
-        
+        train_X_resampled, train_Y_resampled = ros.fit_resample(train_X, train_Y)
+
+        train_Y_resampled = torch.tensor(train_Y_resampled, dtype=torch.int64)
+        train_X_resampled = torch.tensor(train_X_resampled, dtype=torch.float32)
+
+        train_data = torch.utils.data.TensorDataset(train_X_resampled, train_Y_resampled)
         train_loader = DataLoader(
-            torch.utils.data.TensorDataset(train_X_resampled, train_y_resampled), batch_size=batch_size, shuffle=True
+            train_data, batch_size=batch_size, shuffle=True
         )
     # Initialize model and loss module
     model = MLP(1485, hidden_dims, 4).to(DEVICE)
-    # model = binMLP(1485, hidden_dims).to(DEVICE)
     print(model)
 
     loss_module = nn.CrossEntropyLoss()
-    # loss_module = nn.BCEWithLogitsLoss()
     optimizer = optim.SGD(model.parameters(), lr=lr)
     # Training loop including validation
     train_loss = np.zeros(epochs)
@@ -236,7 +244,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", default=128, type=int, help="Minibatch size")
 
     # Other hyperparameters
-    parser.add_argument("--epochs", default=10, type=int, help="Max number of epochs")
+    parser.add_argument("--epochs", default=1, type=int, help="Max number of epochs")
     parser.add_argument(
         "--seed", default=42, type=int, help="Seed to use for reproducing results"
     )
@@ -245,6 +253,11 @@ if __name__ == "__main__":
         default="data/fetched/25753",
         type=str,
         help="Data directory where to find the dataset.",
+    )
+    parser.add_argument(
+        "--oversampling",
+        action="store_true",
+        help="Use this option to add oversampling to the dataset.",
     )
 
     args = parser.parse_args()
