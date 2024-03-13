@@ -39,11 +39,11 @@ from imblearn.over_sampling import RandomOverSampler
 from sklearn.linear_model import ElasticNet
 
 
-# DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-DEVICE = torch.device("cpu")
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# DEVICE = torch.device("cpu")
 
 
-def evaluate_model(model, data_loader, num_classes=2):
+def evaluate_model(model, data_loader, num_classes=4):
     """
     Performs the evaluation of the MLP model on a given dataset.
 
@@ -91,7 +91,7 @@ def evaluate_model(model, data_loader, num_classes=2):
     return metrics, np.mean(losses)
 
 
-def train(dataset, seed, data_dir, udi, config=None):
+def train(dataset, seed, data_dir, udi, config=None, oversampling=False):
 
 
     ds = FCMatrixDataset('data/ukb_filtered_25753_harir_mh_upto69.csv', data_dir, udi, 1)
@@ -127,6 +127,20 @@ def train(dataset, seed, data_dir, udi, config=None):
         test_loader = DataLoader(
             test_d, batch_size=config["batch_size"], shuffle=True
         )
+        if oversampling:
+            train_X = torch.tensor([batch[0] for batch in train_loader]).to(DEVICE)
+            train_y = torch.tensor([batch[1] for batch in train_loader]).to(DEVICE)
+
+            train_Y_counts = np.bincount(train_y)
+            train_Y_max = train_Y_counts.max()
+            sampling_strategy = {i: train_Y_max for i in range(4)}
+            ros = RandomOverSampler(random_state=seed, sampling_strategy=sampling_strategy)
+
+            train_X_resampled, train_y_resampled = ros.fit_resample(train_X, train_y)
+            
+            train_loader = DataLoader(
+                torch.utils.data.TensorDataset(train_X_resampled, train_y_resampled), batch_size=batch_size, shuffle=True
+            )
         if udi == "25755":
             model = MLP(55, config.hidden_dims, 4).to(DEVICE)
         else:
@@ -163,7 +177,6 @@ def train(dataset, seed, data_dir, udi, config=None):
             all_targets = []
             for inputs, targets in train_loader:
                 inputs = inputs.to(DEVICE)
-                # targets = targets.unsqueeze(1).float().to(DEVICE)
                 targets = targets.to(DEVICE)
                 outputs = model(inputs)
                 loss = loss_module(outputs, targets)
@@ -250,6 +263,11 @@ if __name__ == "__main__":
         type=str,
         help="Path to the sweep configuration file.",
     )
+    parser.add_argument(
+        "--oversampling",
+        action="store_true",
+        help="Use this option to add oversampling to the dataset.",
+    )
     args = parser.parse_args()
     kwargs = vars(args)
 
@@ -263,7 +281,7 @@ if __name__ == "__main__":
     with open(sweep_config_path, "r") as f:
         sweep_config = yaml.safe_load(f)
 
-    train_partial = partial(train, seed=kwargs["seed"], dataset=kwargs["dataset"], data_dir=kwargs["data_dir"], udi=udi)
+    train_partial = partial(train, seed=kwargs["seed"], dataset=kwargs["dataset"], data_dir=kwargs["data_dir"], udi=udi, oversampling=kwargs["oversampling"])
 
     print(sweep_config)
 

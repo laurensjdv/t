@@ -13,6 +13,8 @@ from models.mlp import MLP
 from models.bin_mlp import binMLP
 from dataloader import FCMatrixDataset
 
+from imblearn.over_sampling import RandomOverSampler
+
 
 from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
 
@@ -71,7 +73,7 @@ def evaluate_model(model, data_loader, num_classes=4):
     return metrics, np.mean(losses)
 
 
-def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, data_dir):
+def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, data_dir, oversampling=False):
     """
     Args:
       hidden_dims: A list of ints, specificying the hidden dimensionalities to use in the MLP.
@@ -123,6 +125,20 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test, batch_size=batch_size, shuffle=True)
 
+    if oversampling:
+        train_X = torch.tensor([batch[0] for batch in train_loader]).to(DEVICE)
+        train_y = torch.tensor([batch[1] for batch in train_loader]).to(DEVICE)
+
+        train_Y_counts = np.bincount(train_y)
+        train_Y_max = train_Y_counts.max()
+        sampling_strategy = {i: train_Y_max for i in range(4)}
+        ros = RandomOverSampler(random_state=seed, sampling_strategy=sampling_strategy)
+
+        train_X_resampled, train_y_resampled = ros.fit_resample(train_X, train_y)
+        
+        train_loader = DataLoader(
+            torch.utils.data.TensorDataset(train_X_resampled, train_y_resampled), batch_size=batch_size, shuffle=True
+        )
     # Initialize model and loss module
     model = MLP(1485, hidden_dims, 4).to(DEVICE)
     # model = binMLP(1485, hidden_dims).to(DEVICE)
