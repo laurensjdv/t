@@ -40,17 +40,12 @@ def balanced_random_split(dataset, lengths):
     c0_split_indices = [class_0_idx[i:i + l] for i, l in enumerate(c0_lengths)]
     c1_split_indices = [class_1_idx[i:i + l] for i, l in enumerate(c1_lengths)]
 
-    # shuffle the indices
-    # for i in range(len(c0_split_indices)):
-    #     np.random.shuffle(c0_split_indices[i])
-    #     np.random.shuffle(c1_split_indices[i])
 
-    # combine the indices
-        
+
+    # combine the indices 
     split_indices = [c0 + c1 for c0, c1 in zip(c0_split_indices, c1_split_indices)]
 
     # shuffle the indices
-
     for i in range(len(split_indices)):
         np.random.shuffle(split_indices[i])
 
@@ -61,13 +56,9 @@ def balanced_random_split(dataset, lengths):
 
 
 
-    
-
-
-
-
 class FCMatrixDataset(Dataset):
     def __init__(self, ukb_filtered, dir, data_field, mapping, oversample=False):
+        print(ukb_filtered)
         self.ukb_filtered = pd.read_csv(ukb_filtered, sep=' ')
         self.dir = dir
         self.data_field = data_field
@@ -98,8 +89,8 @@ class FCMatrixDataset(Dataset):
         return matrix, enc_label
 
 if __name__ == "__main__":
-    # ds = FCMatrixDataset('data/ukb_filtered_25753_harir_mh_upto69.csv','data/fetched/25753', '25753')
-    ds = FCMatrixDataset('data/gal_eids/gal_data.csv','data/fetched/25755_gal', '25755', None)
+    ds = FCMatrixDataset('data/ukb_filtered_25753_harir_mh_upto69.csv','data/fetched/25753', '25753', 1)
+    # ds = FCMatrixDataset('data/gal_eids/gal_data.csv','data/fetched/25753_gal', '25753', None)
     total_size = len(ds)
     train_size = int(.8* total_size)
     val_size = int(.1 * total_size)
@@ -118,6 +109,10 @@ if __name__ == "__main__":
     test_counts = {0: 0, 1: 0, 2: 0, 3: 0}
 
     for i, (inputs, targets) in enumerate(train_loader):
+        # print shape of first input
+        print(inputs.shape)
+        print(targets)
+        exit()
         for t in targets:
             train_counts[t.item()] += 1
     

@@ -54,7 +54,7 @@ def evaluate_model(model, data_loader, num_classes=2):
         metrics: A dictionary calculated using the conversion of the confusion matrix to metrics.
     """
     model.eval()
-    loss_module = nn.BCELoss()
+    loss_module = nn.CrossEntropyLoss()
     losses = []
 
     all_preds = []
@@ -62,13 +62,14 @@ def evaluate_model(model, data_loader, num_classes=2):
 
     for batch in data_loader:
         inputs = batch[0].to(DEVICE)
-        targets = batch[1].unsqueeze(1).float().to(DEVICE)
-        # targets = targets.unsqueeze(1).float().to(DEVICE)
+        # targets = batch[1].unsqueeze(1).float().to(DEVICE)
+        targets = batch[1].to(DEVICE)
 
         with torch.no_grad():
             outputs = model(inputs)
             loss = loss_module(outputs, targets)
-            pred = torch.round(outputs).detach()
+            _, pred = torch.max(outputs, 1)
+
 
         losses.append(loss.item())
         all_preds.extend(pred.cpu().numpy())
@@ -90,16 +91,27 @@ def evaluate_model(model, data_loader, num_classes=2):
     return metrics, np.mean(losses)
 
 
-def train(dataset, data_dir, udi, config=None):
+def train(dataset, seed, data_dir, udi, config=None):
 
-    ds = FCMatrixDataset(dataset, data_dir, udi, None)
+
+    ds = FCMatrixDataset('data/ukb_filtered_25753_harir_mh_upto69.csv', data_dir, udi, 1)
 
     total_size = len(ds)
     train_size = int(0.8 * total_size)
     val_size = int(0.1 * total_size)
     test_size = total_size - train_size - val_size
 
-    train_d, val_d, test_d = balanced_random_split(ds, [train_size, val_size, test_size])
+    train_d, val_d, test_d = random_split(ds, [train_size, val_size, test_size])
+
+    # set seed 
+
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():  # GPU seed
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.determinstic = True
+        torch.backends.cudnn.benchmark = False
 
 
     with wandb.init(config=config):
@@ -116,12 +128,12 @@ def train(dataset, data_dir, udi, config=None):
             test_d, batch_size=config["batch_size"], shuffle=True
         )
         if udi == "25755":
-            model = binMLP(n_inputs=55, n_hidden=config.hidden_dims).to(DEVICE)
+            model = MLP(55, config.hidden_dims, 4).to(DEVICE)
         else:
-            model = binMLP(n_inputs=1485, n_hidden=config.hidden_dims).to(DEVICE)
+            model = MLP(1485, config.hidden_dims, 4).to(DEVICE)
 
 
-        loss_module = nn.BCELoss()
+        loss_module = nn.CrossEntropyLoss()
         if config["optimizer"] == "adam":
             optimizer = optim.Adam(
                 model.parameters(),
@@ -151,16 +163,16 @@ def train(dataset, data_dir, udi, config=None):
             all_targets = []
             for inputs, targets in train_loader:
                 inputs = inputs.to(DEVICE)
-                targets = targets.unsqueeze(1).float().to(DEVICE)
-
+                # targets = targets.unsqueeze(1).float().to(DEVICE)
+                targets = targets.to(DEVICE)
                 outputs = model(inputs)
                 loss = loss_module(outputs, targets)
+
                 loss += model.l1_loss(l1_lambda)
                 loss += model.l2_loss(l2_lambda)
-
                 train_losses.append(float(loss))
 
-                pred = torch.round(outputs).detach()
+                _ , pred = torch.max(outputs, 1)
 
                 all_preds.extend(pred.cpu().numpy())
                 all_targets.extend(targets.cpu().numpy())
@@ -228,7 +240,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--data_dir",
-        default="data/fetched/25751_gal",
+        default="data/fetched/25753",
         type=str,
         help="Data directory where to find the dataset.",
     )
@@ -251,12 +263,12 @@ if __name__ == "__main__":
     with open(sweep_config_path, "r") as f:
         sweep_config = yaml.safe_load(f)
 
-    train_partial = partial(train, dataset=kwargs["dataset"], data_dir=kwargs["data_dir"], udi=udi)
+    train_partial = partial(train, seed=kwargs["seed"], dataset=kwargs["dataset"], data_dir=kwargs["data_dir"], udi=udi)
 
     print(sweep_config)
 
     
-    sweep_id = wandb.sweep(sweep_config, project=f"{sweep_config['name']}_{udi}")
+    sweep_id = wandb.sweep(sweep_config, project=f"smith_{sweep_config['name']}_{udi}")
 
     # sweep_config['parameters'] = parameters_dict
 
