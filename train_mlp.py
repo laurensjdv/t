@@ -29,7 +29,7 @@ import torch.optim as optim
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def evaluate_model(model, data_loader, num_classes=2):
+def evaluate_model(model, data_loader, num_classes=4):
     """
     Performs the evaluation of the MLP model on a given dataset.
 
@@ -59,17 +59,12 @@ def evaluate_model(model, data_loader, num_classes=2):
         all_preds.extend(pred.cpu().numpy())
         all_targets.extend(targets.cpu().numpy())
     cm = confusion_matrix(all_targets, all_preds, labels=range(num_classes))
-    precision, recall, f1, _ = precision_recall_fscore_support(
-        all_targets, all_preds, labels=range(num_classes), average=None
-    )
+
 
     accuracy = np.trace(cm) / np.sum(cm)
     metrics = {
         "loss": np.mean(losses),
         "accuracy": accuracy,
-        "precision": precision,
-        "recall": recall,
-        "f1": f1,
         "conf_mat": cm,
     }
 
@@ -115,7 +110,7 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
     #     cifar10, batch_size=batch_size, return_numpy=False
     # )
 
-    ds = FCMatrixDataset(dataset, data_dir, "25753", None)
+    ds = FCMatrixDataset(dataset, data_dir, "25753", 1)
 
     total_size = len(ds)
     train_size = int(0.8 * total_size)
@@ -129,8 +124,8 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
     test_loader = DataLoader(test, batch_size=batch_size, shuffle=True)
 
     # Initialize model and loss module
-    # model = MLP(1485, hidden_dims, 4).to(DEVICE)
-    model = binMLP(1485, hidden_dims).to(DEVICE)
+    model = MLP(1485, hidden_dims, 4).to(DEVICE)
+    # model = binMLP(1485, hidden_dims).to(DEVICE)
     print(model)
 
     loss_module = nn.CrossEntropyLoss()
@@ -153,8 +148,6 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
             inputs = inputs.to(DEVICE)
             targets = targets.to(DEVICE)
 
-            # print device of input and targets
-
             # Forward pass
             outputs = model(inputs)
             loss = loss_module.forward(outputs, targets)
@@ -169,7 +162,7 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
             loss.backward()
             optimizer.step()
         train_loss[epoch] = np.mean(train_losses)
-        cm = confusion_matrix(all_targets, all_preds, labels=range(2))
+        cm = confusion_matrix(all_targets, all_preds, labels=range(4))
         accuracy = np.trace(cm) / np.sum(cm)
         train_accuracies[epoch] = accuracy
 
@@ -204,7 +197,7 @@ if __name__ == "__main__":
     # Model hyperparameters
     parser.add_argument(
         "--dataset",
-        default="data/gal_eids/gal_data.csv",
+        default="data/ukb_filtered_25753_harir_mh_upto69.csv",
         type=str,
         nargs="+",
         help='Path to dataset contaning eids and labels. Example: "data/gal_eids/gal_data.csv"',
@@ -224,16 +217,16 @@ if __name__ == "__main__":
 
     # Optimizer hyperparameters
     parser.add_argument("--lr", default=0.0001, type=float, help="Learning rate to use")
-    parser.add_argument("--batch_size", default=512, type=int, help="Minibatch size")
+    parser.add_argument("--batch_size", default=128, type=int, help="Minibatch size")
 
     # Other hyperparameters
-    parser.add_argument("--epochs", default=50, type=int, help="Max number of epochs")
+    parser.add_argument("--epochs", default=10, type=int, help="Max number of epochs")
     parser.add_argument(
         "--seed", default=42, type=int, help="Seed to use for reproducing results"
     )
     parser.add_argument(
         "--data_dir",
-        default="data/fetched/25753_gal",
+        default="data/fetched/25753",
         type=str,
         help="Data directory where to find the dataset.",
     )
