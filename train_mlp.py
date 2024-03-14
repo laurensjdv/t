@@ -136,8 +136,14 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
             train_Y = torch.cat((train_Y, targets), 0)
 
         train_Y_counts = np.bincount(train_Y)
+        print(train_Y_counts)
         train_Y_max = train_Y_counts.max()
-        sampling_strategy = {i: train_Y_max for i in range(4)}
+        train_Y_2nd_max = np.partition(train_Y_counts, -2)[-2]
+        print(train_Y_max)
+        max_idx = np.argmax(train_Y_counts)
+        sampling_strategy = {i: train_Y_2nd_max for i in range(4)}
+        sampling_strategy[max_idx] = train_Y_max
+        print(sampling_strategy)
         ros = RandomOverSampler(random_state=seed, sampling_strategy=sampling_strategy)
 
         train_X_resampled, train_Y_resampled = ros.fit_resample(train_X, train_Y)
