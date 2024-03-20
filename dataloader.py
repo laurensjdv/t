@@ -14,8 +14,12 @@ from torch.utils.data import Dataset, DataLoader, Subset
 
 from imblearn.over_sampling import RandomOverSampler
 
+from torch.utils.data.dataset import random_split
+
 
 from collections import Counter
+
+from torch.utils.data import SubsetRandomSampler
 
 def balanced_random_split(dataset, lengths):
     """
@@ -54,6 +58,22 @@ def balanced_random_split(dataset, lengths):
 
     return samplers
 
+def balanced_random_split_v2(dataset, lengths, num_classes=4):
+    """
+    Args:
+      dataset: A torch.utils.data.Dataset instance, assumed to have an equally balanced class distribution.
+      lengths: A list of ints, specifying the lengths of the splits to make.
+      num_classes: The number of classes in the dataset.
+    Returns:
+      A list of torch.utils.data.SubsetRandomSampler instances, one for each split.
+    """
+    # Get the number of items in the dataset
+    n = len(dataset)
+    
+    # Calculate the number of samples per class
+    n_per_class = int(n / num_classes)
+
+
 
 
 class FCMatrixDataset(Dataset):
@@ -89,14 +109,16 @@ class FCMatrixDataset(Dataset):
         return matrix, enc_label
 
 if __name__ == "__main__":
-    ds = FCMatrixDataset('data/ukb_filtered_25753_harir_mh_upto69.csv','data/fetched/25753', '25753', 1)
+    # ds = FCMatrixDataset('data/ukb_filtered_25753_harir_mh_upto69.csv','data/fetched/25753', '25753', 1)
     # ds = FCMatrixDataset('data/gal_eids/gal_data.csv','data/fetched/25753_gal', '25753', None)
+    ds = FCMatrixDataset('data/fully_balanced_ukb_filtered_25753_harir_mh_upto69.csv','data/fetched/25751', '25751', 1)
     total_size = len(ds)
+    print(total_size)
     train_size = int(.8* total_size)
     val_size = int(.1 * total_size)
     test_size = total_size - train_size - val_size
 
-    train, val, test = balanced_random_split(ds, [train_size, val_size, test_size])
+    train, val, test = balanced_random_split_v2(ds, [train_size, val_size, test_size])
 
     batch_size = 128
 
@@ -104,47 +126,29 @@ if __name__ == "__main__":
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test, batch_size=batch_size, shuffle=True)
 
+
+    all_counts = {0: 0, 1: 0, 2: 0, 3: 0}
     train_counts = {0: 0, 1: 0, 2: 0, 3: 0}
     val_counts = {0: 0, 1: 0, 2: 0, 3: 0}
     test_counts = {0: 0, 1: 0, 2: 0, 3: 0}
 
     for i, (inputs, targets) in enumerate(train_loader):
-        # print shape of first input
-        print(inputs.shape)
-        print(targets)
-        exit()
         for t in targets:
             train_counts[t.item()] += 1
+            all_counts[t.item()] += 1
     
     for i, (inputs, targets) in enumerate(val_loader):
         for t in targets:
             val_counts[t.item()] += 1
+            all_counts[t.item()] += 1
 
     for i, (inputs, targets) in enumerate(test_loader):
         for t in targets:
             test_counts[t.item()] += 1
+            all_counts[t.item()] += 1
 
+    print(all_counts)
     print(train_counts)
     print(val_counts)
     print(test_counts)
-    # matrix, label = ds[0]
-    # D = 55
-    # sq_fc = np.zeros((D,D))
-    # sq_fc[np.triu_indices(D,1)] = matrix.split()
-    # sq_fc += sq_fc.T
 
-    # print(sq_fc.shape)
-
-    # plt.imshow(sq_fc)
-    # plt.colorbar()
-    # plt.show()
-
-    # for i, (inputs, targets) in enumerate(ds):
-    #     print(i, targets)
-
-    l = int(len(ds)/2)
-    print(l)
-    # print(ds[0])
-    print(ds[l-1][1])
-    print(ds[l][1])
-    print(ds[l+1][1])

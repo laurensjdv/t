@@ -94,7 +94,7 @@ def evaluate_model(model, data_loader, num_classes=4):
 def train(dataset, seed, data_dir, udi, config=None, oversampling=False):
 
 
-    ds = FCMatrixDataset('data/ukb_filtered_25753_harir_mh_upto69.csv', data_dir, udi, 1)
+    ds = FCMatrixDataset('data/fully_balanced_ukb_filtered_25753_harir_mh_upto69.csv', data_dir, udi, 1)
 
     total_size = len(ds)
     train_size = int(0.8 * total_size)
@@ -128,9 +128,15 @@ def train(dataset, seed, data_dir, udi, config=None, oversampling=False):
         test_loader = DataLoader(
             test_d, batch_size=batch_size, shuffle=True
         )
+        wandb.log({"oversampling": oversampling})
         if oversampling:
-            train_X = torch.tensor([batch[0] for batch in train_loader]).to(DEVICE)
-            train_Y = torch.tensor([batch[1] for batch in train_loader]).to(DEVICE)
+            train_X = torch.tensor([])
+            train_Y = torch.tensor([], dtype=torch.int64)
+            for batch in train_loader:
+                inputs = batch[0]
+                targets = batch[1]
+                train_X = torch.cat((train_X, inputs), 0)
+                train_Y = torch.cat((train_Y, targets), 0)
 
             train_Y_counts = np.bincount(train_Y)
             max_idx = np.argmax(train_Y_counts)
@@ -144,9 +150,10 @@ def train(dataset, seed, data_dir, udi, config=None, oversampling=False):
 
             train_Y_resampled = torch.tensor(train_Y_resampled, dtype=torch.int64)
             train_X_resampled = torch.tensor(train_X_resampled, dtype=torch.float32)
-            
+
+            train_data = torch.utils.data.TensorDataset(train_X_resampled, train_Y_resampled)
             train_loader = DataLoader(
-                torch.utils.data.TensorDataset(train_X_resampled, train_Y_resampled), batch_size=batch_size, shuffle=True
+                train_data, batch_size=batch_size, shuffle=True
             )
         if udi == "25755":
             model = MLP(55, config.hidden_dims, 4).to(DEVICE)
@@ -242,19 +249,7 @@ if __name__ == "__main__":
         nargs="+",
         help='Path to dataset contaning eids and labels. Example: "data/gal_eids/gal_data.csv"',
     )
-    # parser.add_argument(
-    #     "--model_type",
-    #     default="bin_mlp",
-    #     type=str,
-    #     help='Model to use. Example: "bin_mlp" or "elasticnet',
-    # )
 
-    # Optimizer hyperparameters
-    # parser.add_argument("--lr", default=0.0001, type=float, help="Learning rate to use")
-    # parser.add_argument("--batch_size", default=512, type=int, help="Minibatch size")
-
-    # Other hyperparameters
-    # parser.add_argument("--epochs", default=100, type=int, help="Max number of epochs")
     parser.add_argument(
         "--seed", default=42, type=int, help="Seed to use for reproducing results"
     )
@@ -293,9 +288,7 @@ if __name__ == "__main__":
     print(sweep_config)
 
     
-    sweep_id = wandb.sweep(sweep_config, project=f"smith_{sweep_config['name']}_{udi}")
-
-    # sweep_config['parameters'] = parameters_dict
+    sweep_id = wandb.sweep(sweep_config, project=f"smith_{kwargs['oversampling']}_{sweep_config['name']}_{udi}")
 
     wandb.agent(sweep_id, train_partial, count=100)
 

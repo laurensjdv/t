@@ -126,7 +126,6 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
     test_loader = DataLoader(test, batch_size=batch_size, shuffle=True)
 
     if oversampling:
-
         train_X = torch.tensor([])
         train_Y = torch.tensor([], dtype=torch.int64)
         for batch in train_loader:
@@ -243,11 +242,11 @@ if __name__ == "__main__":
     )
 
     # Optimizer hyperparameters
-    parser.add_argument("--lr", default=0.0001, type=float, help="Learning rate to use")
+    parser.add_argument("--lr", default=0.00001, type=float, help="Learning rate to use")
     parser.add_argument("--batch_size", default=128, type=int, help="Minibatch size")
 
     # Other hyperparameters
-    parser.add_argument("--epochs", default=1, type=int, help="Max number of epochs")
+    parser.add_argument("--epochs", default=50, type=int, help="Max number of epochs")
     parser.add_argument(
         "--seed", default=42, type=int, help="Seed to use for reproducing results"
     )

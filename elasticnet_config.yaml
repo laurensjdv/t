@@ -1,14 +1,13 @@
 program: wandb_search.py
-name: elasticnet_sweep
+name: balenced_elasticnet
 method: random
 metric:
   goal: maximize
   name: test_acc
 parameters:
   learning_rate:
-    distribution: log_uniform
-    min: 1e-6
-    max: 1e-4
+    min: 0.0000001
+    max: 0.0001
   batch_size:
     distribution: q_log_uniform_values
     q: 8
