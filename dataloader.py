@@ -86,11 +86,18 @@ def balanced_random_split_v2(dataset, subset_lengths, num_classes=4):
         l_per_class = int(l / num_classes)
         subset_idx = []
         for i in range(num_classes):
-            subset_idx.extend(class_indices[i][start_idx:start_idx + l])
+            subset_idx.extend(class_indices[i][start_idx:start_idx + l_per_class])
 
         start_idx += l_per_class
         subsets_idxs.append(subset_idx)
             
+    # calculate overlap between class_indices lists
+    overlap = [len(set(class_indices[i]) & set(class_indices[i+1])) for i in range(len(class_indices) - 1)]
+    print(overlap)
+
+    # calculate overlap between subeset_idxs lists
+    overlap = [len(set(subsets_idxs[i]) & set(subsets_idxs[i+1])) for i in range(len(subsets_idxs) - 1)]
+    print(overlap)
 
     samplers = [Subset(dataset, indices) for indices in subsets_idxs]
 
@@ -164,7 +171,7 @@ if __name__ == "__main__":
 
     print(f"Train size: {train_size}, Test size: {test_size}, Validation size: {val_size}")
 
-    train, val, test = balanced_random_split_v2(ds, [train_size, val_size, test_size])
+    train, val, test = balanced_random_split_v2(ds, [train_size, val_size, test_size], 4)
 
     batch_size = 128
 

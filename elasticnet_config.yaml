@@ -1,5 +1,5 @@
 program: wandb_search.py
-name: balenced_elasticnet
+name: elasticnet
 method: random
 metric:
   goal: maximize

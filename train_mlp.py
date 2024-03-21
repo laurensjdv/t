@@ -12,6 +12,7 @@ from tqdm.auto import tqdm
 from models.mlp import MLP
 from models.bin_mlp import binMLP
 from dataloader import FCMatrixDataset
+from dataloader import balanced_random_split_v2
 
 from imblearn.over_sampling import RandomOverSampler
 
@@ -119,7 +120,7 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
     val_size = int(0.1 * total_size)
     test_size = total_size - train_size - val_size
 
-    train, val, test = random_split(ds, [train_size, val_size, test_size])
+    train, val, test = balanced_random_split_v2(ds, [train_size, val_size, test_size])
 
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=True)

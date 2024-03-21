@@ -12,7 +12,7 @@ from tqdm.auto import tqdm
 from models.mlp import MLP
 from models.bin_mlp import binMLP
 from dataloader import FCMatrixDataset
-from dataloader import balanced_random_split
+from dataloader import balanced_random_split_v2
 
 from functools import partial
 
@@ -76,15 +76,11 @@ def evaluate_model(model, data_loader, num_classes=4):
         all_targets.extend(targets.cpu().numpy())
 
     cm = confusion_matrix(all_targets, all_preds, labels=range(num_classes))
-    # precision, recall, f1, _ = precision_recall_fscore_support(all_targets, all_preds, labels=range(num_classes), average=None)
 
     accuracy = np.trace(cm) / np.sum(cm)
     metrics = {
         "loss": np.mean(losses),
         "accuracy": accuracy,
-        # "precision": precision,
-        # "recall": recall,
-        # "f1": f1,
         "conf_mat": cm,
     }
 
@@ -92,19 +88,6 @@ def evaluate_model(model, data_loader, num_classes=4):
 
 
 def train(dataset, seed, data_dir, udi, config=None, oversampling=False):
-
-
-    ds = FCMatrixDataset('data/fully_balanced_ukb_filtered_25753_harir_mh_upto69.csv', data_dir, udi, 1)
-
-    total_size = len(ds)
-    train_size = int(0.8 * total_size)
-    val_size = int(0.1 * total_size)
-    test_size = total_size - train_size - val_size
-
-    train_d, val_d, test_d = random_split(ds, [train_size, val_size, test_size])
-
-    # set seed 
-
     np.random.seed(seed)
     torch.manual_seed(seed)
     if torch.cuda.is_available():  # GPU seed
@@ -113,6 +96,14 @@ def train(dataset, seed, data_dir, udi, config=None, oversampling=False):
         torch.backends.cudnn.determinstic = True
         torch.backends.cudnn.benchmark = False
 
+    ds = FCMatrixDataset('data/fully_balanced_ukb_filtered_25753_harir_mh_upto69.csv', data_dir, udi, 1)
+
+    total_size = len(ds)
+    train_size = int(0.8 * total_size)
+    val_size = int(0.1 * total_size)
+    test_size = total_size - train_size - val_size
+
+    train_d, val_d, test_d = balanced_random_split_v2(ds, [train_size, val_size, test_size])
 
     with wandb.init(config=config):
         config = wandb.config
@@ -128,7 +119,6 @@ def train(dataset, seed, data_dir, udi, config=None, oversampling=False):
         test_loader = DataLoader(
             test_d, batch_size=batch_size, shuffle=True
         )
-        wandb.log({"oversampling": oversampling})
         if oversampling:
             train_X = torch.tensor([])
             train_Y = torch.tensor([], dtype=torch.int64)
@@ -145,9 +135,7 @@ def train(dataset, seed, data_dir, udi, config=None, oversampling=False):
             sampling_strategy[max_idx] = train_Y_counts[max_idx]
 
             ros = RandomOverSampler(random_state=seed, sampling_strategy=sampling_strategy)
-
             train_X_resampled, train_Y_resampled = ros.fit_resample(train_X, train_Y)
-
             train_Y_resampled = torch.tensor(train_Y_resampled, dtype=torch.int64)
             train_X_resampled = torch.tensor(train_X_resampled, dtype=torch.float32)
 
@@ -159,7 +147,6 @@ def train(dataset, seed, data_dir, udi, config=None, oversampling=False):
             model = MLP(55, config.hidden_dims, 4).to(DEVICE)
         else:
             model = MLP(1485, config.hidden_dims, 4).to(DEVICE)
-
 
         loss_module = nn.CrossEntropyLoss()
         if config["optimizer"] == "adam":
@@ -180,8 +167,6 @@ def train(dataset, seed, data_dir, udi, config=None, oversampling=False):
         train_acc = np.zeros(epochs)
         val_acc = np.zeros(epochs)
         best_val_acc = 0
-
-        
 
         for epoch in range(config["epochs"]):
             model.train()
@@ -236,7 +221,6 @@ def train(dataset, seed, data_dir, udi, config=None, oversampling=False):
 
         wandb.log({"test_acc": test_acc})
 
-
 if __name__ == "__main__":
     # Command line arguments
     parser = argparse.ArgumentParser()
@@ -277,7 +261,6 @@ if __name__ == "__main__":
 
     udi = data_dir.split("/")[-1]
     udi = udi.split("_")[0]
-
     sweep_config_path = kwargs["sweep_config"]
 
     with open(sweep_config_path, "r") as f:
@@ -287,8 +270,6 @@ if __name__ == "__main__":
 
     print(sweep_config)
 
-    
     sweep_id = wandb.sweep(sweep_config, project=f"smith_{kwargs['oversampling']}_{sweep_config['name']}_{udi}")
-
     wandb.agent(sweep_id, train_partial, count=100)
 
