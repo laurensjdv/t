@@ -73,7 +73,7 @@ def evaluate_model(model, data_loader, num_classes=4):
     return metrics, np.mean(losses)
 
 
-def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, data_dir, oversampling=False):
+def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, data_dir, dropout, oversampling=False):
     """
     Args:
       hidden_dims: A list of ints, specificying the hidden dimensionalities to use in the MLP.
@@ -112,7 +112,7 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
     #     cifar10, batch_size=batch_size, return_numpy=False
     # )
 
-    ds = FCMatrixDataset(dataset, data_dir, "25753", 1)
+    ds = FCMatrixDataset(dataset, data_dir, "25751", 1)
 
     total_size = len(ds)
     train_size = int(0.8 * total_size)
@@ -124,6 +124,16 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test, batch_size=batch_size, shuffle=True)
+
+
+    test_labels = []
+    for batch in test_loader:
+        test_labels.extend(batch[1].numpy())
+
+    # count labels
+    test_labels = np.array(test_labels)
+    test_labels_counts = np.bincount(test_labels)
+    print(test_labels_counts)
 
     if oversampling:
         train_X = torch.tensor([])
@@ -223,7 +233,8 @@ if __name__ == "__main__":
     # Model hyperparameters
     parser.add_argument(
         "--dataset",
-        default="data/ukb_filtered_25753_harir_mh_upto69.csv",
+        # default="data/ukb_filtered_25753_harir_mh_upto69.csv",
+        default = "data/fully_balanced_ukb_filtered_25753_harir_mh_upto69.csv",
         type=str,
         nargs="+",
         help='Path to dataset contaning eids and labels. Example: "data/gal_eids/gal_data.csv"',
@@ -260,6 +271,12 @@ if __name__ == "__main__":
         "--oversampling",
         action="store_true",
         help="Use this option to add oversampling to the dataset.",
+    )
+    parser.add_argument(
+        "--dropout",
+        default=0.5,
+        type=float,
+        help="Dropout rate to use in the network",
     )
 
     args = parser.parse_args()

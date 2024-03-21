@@ -58,7 +58,7 @@ def balanced_random_split(dataset, lengths):
 
     return samplers
 
-def balanced_random_split_v2(dataset, lengths, num_classes=4):
+def balanced_random_split_v2(dataset, subset_lengths, num_classes=4):
     """
     Args:
       dataset: A torch.utils.data.Dataset instance, assumed to have an equally balanced class distribution.
@@ -67,19 +67,41 @@ def balanced_random_split_v2(dataset, lengths, num_classes=4):
     Returns:
       A list of torch.utils.data.SubsetRandomSampler instances, one for each split.
     """
-    # Get the number of items in the dataset
     n = len(dataset)
     
-    # Calculate the number of samples per class
     n_per_class = int(n / num_classes)
+    indices = list(range(n))
 
+    class_indices = []
+    for i in range(num_classes):
+        class_indices.append([idx for idx in indices if dataset[idx][1] == i])
+
+        
+    for i in range(num_classes):
+        np.random.shuffle(class_indices[i])
+
+    subsets_idxs = []
+    start_idx = 0
+    for l in subset_lengths:
+        l_per_class = int(l / num_classes)
+        subset_idx = []
+        for i in range(num_classes):
+            subset_idx.extend(class_indices[i][start_idx:start_idx + l])
+
+        start_idx += l_per_class
+        subsets_idxs.append(subset_idx)
+            
+
+    samplers = [Subset(dataset, indices) for indices in subsets_idxs]
+
+    return samplers
 
 
 
 class FCMatrixDataset(Dataset):
     def __init__(self, ukb_filtered, dir, data_field, mapping, oversample=False):
         print(ukb_filtered)
-        self.ukb_filtered = pd.read_csv(ukb_filtered, sep=' ')
+        self.ukb_filtered = pd.read_csv(ukb_filtered, sep=' ', header=None)
         self.dir = dir
         self.data_field = data_field
         if mapping is not None:
@@ -112,11 +134,35 @@ if __name__ == "__main__":
     # ds = FCMatrixDataset('data/ukb_filtered_25753_harir_mh_upto69.csv','data/fetched/25753', '25753', 1)
     # ds = FCMatrixDataset('data/gal_eids/gal_data.csv','data/fetched/25753_gal', '25753', None)
     ds = FCMatrixDataset('data/fully_balanced_ukb_filtered_25753_harir_mh_upto69.csv','data/fetched/25751', '25751', 1)
-    total_size = len(ds)
-    print(total_size)
-    train_size = int(.8* total_size)
-    val_size = int(.1 * total_size)
-    test_size = total_size - train_size - val_size
+    total_samples = len(ds)
+
+    print(total_samples)
+    train_ratio = 0.8
+    test_ratio = 0.1
+    val_ratio = 0.1
+
+    # Ensure the training set is divisible by 4
+    # Start with a direct calculation
+    train_size = int(total_samples * train_ratio)
+    # Adjust train_size to make it divisible by 4
+    while train_size % 4 != 0:
+        train_size -= 1
+
+    # Calculate the remaining samples after allocating to the training set
+    remaining_samples = total_samples - train_size
+    # Assuming we want test and validation sets to be the same size
+    test_size =  remaining_samples // 2
+    val_size = remaining_samples - test_size
+
+    # Ensure test and validation sets are of the same size and adjust if necessary
+    # This block is to make sure we handle the division properly
+    # In your case, since you prefer them to be equal and 10% each, adjustments might be minor
+    if test_size + val_size + train_size < total_samples:
+        extra = total_samples - (test_size + val_size + train_size)
+        test_size += extra // 2
+        val_size += extra // 2
+
+    print(f"Train size: {train_size}, Test size: {test_size}, Validation size: {val_size}")
 
     train, val, test = balanced_random_split_v2(ds, [train_size, val_size, test_size])
 
