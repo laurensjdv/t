@@ -1,0 +1,6 @@
+matched matches HC to MDD group based on gender then age
+
+rds_HC_smith_single_ep = HC group filtered by smith and rds, MDD group defined by smith
+matched_rds_over_8 = HC group filtered by rds, MDD group defined by rds
+matched_smith_single_ep = HC group filtered by smith, MDD group defined by smith
+matched_smith_single_ep_rds_over_8 = HC group filtered by smith and rds, MDD group defined by smith and rds

@@ -11,7 +11,7 @@ from copy import deepcopy
 from tqdm.auto import tqdm
 from models.mlp import MLP
 from models.bin_mlp import binMLP
-from dataloader import FCMatrixDataset
+from t.dataloaders.dataloader import FCMatrixDataset
 
 
 from sklearn.metrics import confusion_matrix, precision_recall_fscore_support

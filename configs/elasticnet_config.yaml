@@ -1,5 +1,5 @@
 program: wandb_search.py
-name: elasticnet
+name: sex_elasticnet
 method: random
 metric:
   goal: maximize
@@ -12,9 +12,9 @@ parameters:
     distribution: q_log_uniform_values
     q: 8
     min: 32
-    max: 512
+    max: 2048
   epochs:
-    values: [50, 100]
+    values: [25, 50, 100]
   optimizer:
     value: sgd
   dropout:
@@ -23,8 +23,14 @@ parameters:
   l1_lambda:
     min: 0.0
     max: 1.0
-  hidden_dims:
-    values: [[256], [512], [512, 64, 8], [512, 256, 256, 128, 64, 32, 8]]
+  # hidden_dims:
+  #   values: [[256], [512], [512, 64, 8], [512, 256, 256, 128, 64, 32, 8]]
+  k_order:
+    min: 1
+    max: 20
+  k_degree:
+    min: 1
+    max: 55
   
 
   

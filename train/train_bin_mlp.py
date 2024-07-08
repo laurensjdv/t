@@ -8,15 +8,14 @@ import argparse
 import numpy as np
 import os
 from copy import deepcopy
-from collections import Counter
 from tqdm.auto import tqdm
 from models.mlp import MLP
 from models.bin_mlp import binMLP
-from dataloader import FCMatrixDataset
+from t.dataloaders.dataloader import FCMatrixDataset
 
-from imblearn.over_sampling import RandomOverSampler
 
 from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
+from skorch import NeuralNetClassifier
 
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import random_split
@@ -28,7 +27,8 @@ import torch.nn as nn
 import torch.optim as optim
 
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cpu")
 
 
 def evaluate_model(model, data_loader, num_classes=2):
@@ -42,7 +42,7 @@ def evaluate_model(model, data_loader, num_classes=2):
         metrics: A dictionary calculated using the conversion of the confusion matrix to metrics.
     """
     model.eval()
-    loss_module = nn.CrossEntropyLoss()
+    loss_module = nn.BCELoss()
     losses = []
 
     all_preds = []
@@ -50,16 +50,19 @@ def evaluate_model(model, data_loader, num_classes=2):
 
     for batch in data_loader:
         inputs = batch[0].to(DEVICE)
-        targets = batch[1].to(DEVICE)
+        targets = batch[1].unsqueeze(1).float().to(DEVICE)
+            # targets = targets.unsqueeze(1).float().to(DEVICE)
 
         with torch.no_grad():
             outputs = model(inputs)
             loss = loss_module(outputs, targets)
-            _, pred = torch.max(outputs, 1)
+            pred = torch.round(outputs).detach()
+
 
         losses.append(loss.item())
         all_preds.extend(pred.cpu().numpy())
         all_targets.extend(targets.cpu().numpy())
+        
     cm = confusion_matrix(all_targets, all_preds, labels = range(num_classes))
     precision, recall, f1, _ = precision_recall_fscore_support(all_targets, all_preds, labels=range(num_classes), average=None)
 
@@ -76,12 +79,11 @@ def evaluate_model(model, data_loader, num_classes=2):
     return metrics, np.mean(losses)
 
 
-def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, data_dir):
+def train(dataset, hidden_dims, lr, batch_size, epochs, seed, data_dir, dropout, weight_decay):
     """
     Args:
       hidden_dims: A list of ints, specificying the hidden dimensionalities to use in the MLP.
       lr: Learning rate of the SGD to apply.
-      use_batch_norm: If True, adds batch normalization layer into the network.
       batch_size: Minibatch size for the data loaders.
       epochs: Number of training epochs to perform.
       seed: Seed to use for reproducible results.
@@ -97,10 +99,9 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
 
     """
 
-    # Set the random seeds for reproducibility
     np.random.seed(seed)
     torch.manual_seed(seed)
-    if torch.cuda.is_available():  # GPU operation have separate seed
+    if torch.cuda.is_available():  # GPU seed
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
         torch.backends.cudnn.determinstic = True
@@ -115,68 +116,38 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
     #     cifar10, batch_size=batch_size, return_numpy=False
     # )
 
-    ds = FCMatrixDataset(dataset,data_dir, '25753', mapping=1)
+    ds = FCMatrixDataset(dataset,data_dir, '25751', None)
     
 
-    # ds_X = [ds[i][0]for i in range(len(ds))]
-
-    ds_X = torch.tensor(np.array([np.array(ds[i][0]) for i in range(len(ds))]), dtype=torch.float32)
-    ds_y = torch.tensor([ds[i][1] for i in range(len(ds))])
-
-    print(ds_X.shape)
-    print(ds_y.shape)
-
-    print(len(ds_X))
-    # print(len(ds_y))
-    # for i in range(len(ds_y)):
-    #     if ds_y[i].shape[0] != 1485:
-    #         print(ds_y[i].shape)
-    print(ds_X[0].type)
-    print(ds_y[0].type)
-    # print(ds_y)
-    # exit()
-    ros = RandomOverSampler(random_state=seed, sampling_strategy={ 1: 1870, 3: 1870})
-
-    X_resampled, y_resampled = ros.fit_resample(ds_X, ds_y)
-
-    counts = {0: 0, 1: 0, 2: 0, 3: 0}
-    for y in ds_y:
-        counts[int(y)] += 1
-    print('Original dataset shape %s' % counts)
-    print('Resampled dataset shape %s' % Counter(y_resampled))
-
-    exit()
-
-    ds = FCMatrixDataset(X_resampled, y_resampled, '25753', None)
-
-    print(len(ds))
     total_size = len(ds)
     train_size = int(.8* total_size)
     val_size = int(.1 * total_size)
     test_size = total_size - train_size - val_size
-    
-    train, val, test = random_split(ds, [train_size, val_size, test_size])
 
+    train, val, test = random_split(ds, [train_size, val_size, test_size])
 
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test, batch_size=batch_size, shuffle=True)
 
     # Initialize model and loss module
-    model = MLP(1485, hidden_dims, 4).to(DEVICE)
+    # model = MLP(1485, hidden_dims, 4).to(DEVICE)
     # model = binMLP(1485, hidden_dims).to(DEVICE)
+    model = binMLP(n_inputs=1485, n_hidden=hidden_dims, dropout=dropout).to(DEVICE)
     print(model)
 
-    loss_module = nn.CrossEntropyLoss()
+    # print model weights
+
+    # loss_module = nn.CrossEntropyLoss()
     # loss_module = nn.BCEWithLogitsLoss()
-    optimizer = optim.SGD(model.parameters(), lr=lr)
+    loss_module = nn.BCELoss()
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     # Training loop including validation
     train_loss = np.zeros(epochs)
     val_losses = np.zeros(epochs)
     train_accuracies = np.zeros(epochs)
     val_accuracies = np.zeros(epochs)
     best_val_acc = 0
-
 
     for epoch in range(epochs):
         model.train()
@@ -186,15 +157,21 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
         all_targets = []
         for inputs, targets in tqdm(train_loader):
             inputs = inputs.to(DEVICE)
-            targets = targets.to(DEVICE)
+            targets = targets.unsqueeze(1).float().to(DEVICE)
 
             # print device of input and targets
 
             # Forward pass
             outputs = model(inputs)
-            loss = loss_module.forward(outputs, targets)
+            loss = loss_module(outputs, targets)
+            loss += model.l1_reg()
+            loss += model.l2_reg()
+            
             train_losses.append(float(loss))
-            _, pred = torch.max(outputs, 1)
+            
+            pred = torch.round(outputs).detach()
+            # print(targets)
+            # print(pred)
 
             all_preds.extend(pred.cpu().numpy())
             all_targets.extend(targets.cpu().numpy())
@@ -203,6 +180,7 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+  
         train_loss[epoch] = np.mean(train_losses)
         cm = confusion_matrix(all_targets, all_preds, labels = range(2))
         accuracy = np.trace(cm) / np.sum(cm)
@@ -239,27 +217,26 @@ if __name__ == "__main__":
     # Model hyperparameters
     parser.add_argument(
         "--dataset",
-        default= 'data/ukb_filtered_25753_harir_mh_upto69.csv',
+        default= 'data/gal_eids/gal_data.csv',
         type=str,
         nargs="+",
         help='Path to dataset contaning eids and labels. Example: "data/gal_eids/gal_data.csv"',
     )
     parser.add_argument(
         "--hidden_dims",
-        default=[512, 512, 128, 128, 64, 32],
+        # default=[512, 512, 128, 128, 64, 32],
+        # default=[564],
+        default= [],
         type=int,
         nargs="+",
         help='Hidden dimensionalities to use inside the network. To specify multiple, use " " to separate them. Example: "256 128"',
     )
-    parser.add_argument(
-        "--use_batch_norm",
-        action="store_true",
-        help="Use this option to add Batch Normalization layers to the MLP.",
-    )
 
     # Optimizer hyperparameters
-    parser.add_argument("--lr", default=0.0001, type=float, help="Learning rate to use")
-    parser.add_argument("--batch_size", default=512, type=int, help="Minibatch size")
+    parser.add_argument("--lr", default=0.00001, type=float, help="Learning rate to use")
+    parser.add_argument("--weight_decay", default=0.0001, type=float, help="Weight decay to use")
+    parser.add_argument("--dropout", default=0.1, type=float, help="Dropout rate to use")
+    parser.add_argument("--batch_size", default=32, type=int, help="Minibatch size")
 
     # Other hyperparameters
     parser.add_argument("--epochs", default=50, type=int, help="Max number of epochs")
@@ -268,7 +245,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--data_dir",
-        default="data/fetched/25753",
+        default="data/fetched/25751_gal",
         type=str,
         help="Data directory where to find the dataset.",
     )
@@ -299,6 +276,8 @@ if __name__ == "__main__":
 
     # add legend to confusion matrix
     plt.colorbar()
+    # set color range from 0 to max value in confusion matrix
+    plt.clim(0, max(test_metrics["conf_mat"].flatten()))
     # add axis labels to confusion matrix
     plt.xlabel("predicted")
     plt.ylabel("true")

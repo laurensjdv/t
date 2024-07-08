@@ -8,14 +8,13 @@ import argparse
 import numpy as np
 import os
 from copy import deepcopy
+from collections import Counter
 from tqdm.auto import tqdm
 from models.mlp import MLP
 from models.bin_mlp import binMLP
-from dataloader import FCMatrixDataset
-from dataloader import balanced_random_split_v2
+from t.dataloaders.dataloader import FCMatrixDataset
 
 from imblearn.over_sampling import RandomOverSampler
-
 
 from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
 
@@ -32,7 +31,7 @@ import torch.optim as optim
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def evaluate_model(model, data_loader, num_classes=4):
+def evaluate_model(model, data_loader, num_classes=2):
     """
     Performs the evaluation of the MLP model on a given dataset.
 
@@ -61,20 +60,23 @@ def evaluate_model(model, data_loader, num_classes=4):
         losses.append(loss.item())
         all_preds.extend(pred.cpu().numpy())
         all_targets.extend(targets.cpu().numpy())
-    cm = confusion_matrix(all_targets, all_preds, labels=range(num_classes))
-
+    cm = confusion_matrix(all_targets, all_preds, labels = range(num_classes))
+    precision, recall, f1, _ = precision_recall_fscore_support(all_targets, all_preds, labels=range(num_classes), average=None)
 
     accuracy = np.trace(cm) / np.sum(cm)
     metrics = {
         "loss": np.mean(losses),
         "accuracy": accuracy,
-        "conf_mat": cm,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+        "conf_mat": cm
     }
 
     return metrics, np.mean(losses)
 
 
-def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, data_dir, dropout, oversampling=False):
+def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, data_dir):
     """
     Args:
       hidden_dims: A list of ints, specificying the hidden dimensionalities to use in the MLP.
@@ -113,60 +115,60 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
     #     cifar10, batch_size=batch_size, return_numpy=False
     # )
 
-    ds = FCMatrixDataset(dataset, data_dir, "25751", 1)
+    ds = FCMatrixDataset(dataset,data_dir, '25753', mapping=1)
+    
 
+    # ds_X = [ds[i][0]for i in range(len(ds))]
+
+    ds_X = torch.tensor(np.array([np.array(ds[i][0]) for i in range(len(ds))]), dtype=torch.float32)
+    ds_y = torch.tensor([ds[i][1] for i in range(len(ds))])
+
+    print(ds_X.shape)
+    print(ds_y.shape)
+
+    print(len(ds_X))
+    # print(len(ds_y))
+    # for i in range(len(ds_y)):
+    #     if ds_y[i].shape[0] != 1485:
+    #         print(ds_y[i].shape)
+    print(ds_X[0].type)
+    print(ds_y[0].type)
+    # print(ds_y)
+    # exit()
+    ros = RandomOverSampler(random_state=seed, sampling_strategy={ 1: 1870, 3: 1870})
+
+    X_resampled, y_resampled = ros.fit_resample(ds_X, ds_y)
+
+    counts = {0: 0, 1: 0, 2: 0, 3: 0}
+    for y in ds_y:
+        counts[int(y)] += 1
+    print('Original dataset shape %s' % counts)
+    print('Resampled dataset shape %s' % Counter(y_resampled))
+
+    exit()
+
+    ds = FCMatrixDataset(X_resampled, y_resampled, '25753', None)
+
+    print(len(ds))
     total_size = len(ds)
-    train_size = int(0.8 * total_size)
-    val_size = int(0.1 * total_size)
+    train_size = int(.8* total_size)
+    val_size = int(.1 * total_size)
     test_size = total_size - train_size - val_size
+    
+    train, val, test = random_split(ds, [train_size, val_size, test_size])
 
-    train, val, test = balanced_random_split_v2(ds, [train_size, val_size, test_size])
 
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test, batch_size=batch_size, shuffle=True)
 
-
-    test_labels = []
-    for batch in test_loader:
-        test_labels.extend(batch[1].numpy())
-
-    # count labels
-    test_labels = np.array(test_labels)
-    test_labels_counts = np.bincount(test_labels)
-    print(test_labels_counts)
-
-    if oversampling:
-        train_X = torch.tensor([])
-        train_Y = torch.tensor([], dtype=torch.int64)
-        for batch in train_loader:
-            inputs = batch[0]
-            targets = batch[1]
-            train_X = torch.cat((train_X, inputs), 0)
-            train_Y = torch.cat((train_Y, targets), 0)
-
-        train_Y_counts = np.bincount(train_Y)
-        max_idx = np.argmax(train_Y_counts)
-        train_Y_2nd_max = np.partition(train_Y_counts, -2)[-2]
-        sampling_strategy = {i: train_Y_2nd_max for i in range(4)}
-        sampling_strategy[max_idx] = train_Y_counts[max_idx]
-
-        ros = RandomOverSampler(random_state=seed, sampling_strategy=sampling_strategy)
-
-        train_X_resampled, train_Y_resampled = ros.fit_resample(train_X, train_Y)
-
-        train_Y_resampled = torch.tensor(train_Y_resampled, dtype=torch.int64)
-        train_X_resampled = torch.tensor(train_X_resampled, dtype=torch.float32)
-
-        train_data = torch.utils.data.TensorDataset(train_X_resampled, train_Y_resampled)
-        train_loader = DataLoader(
-            train_data, batch_size=batch_size, shuffle=True
-        )
     # Initialize model and loss module
     model = MLP(1485, hidden_dims, 4).to(DEVICE)
+    # model = binMLP(1485, hidden_dims).to(DEVICE)
     print(model)
 
     loss_module = nn.CrossEntropyLoss()
+    # loss_module = nn.BCEWithLogitsLoss()
     optimizer = optim.SGD(model.parameters(), lr=lr)
     # Training loop including validation
     train_loss = np.zeros(epochs)
@@ -174,6 +176,7 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
     train_accuracies = np.zeros(epochs)
     val_accuracies = np.zeros(epochs)
     best_val_acc = 0
+
 
     for epoch in range(epochs):
         model.train()
@@ -184,6 +187,8 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
         for inputs, targets in tqdm(train_loader):
             inputs = inputs.to(DEVICE)
             targets = targets.to(DEVICE)
+
+            # print device of input and targets
 
             # Forward pass
             outputs = model(inputs)
@@ -199,7 +204,7 @@ def train(dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, da
             loss.backward()
             optimizer.step()
         train_loss[epoch] = np.mean(train_losses)
-        cm = confusion_matrix(all_targets, all_preds, labels=range(4))
+        cm = confusion_matrix(all_targets, all_preds, labels = range(2))
         accuracy = np.trace(cm) / np.sum(cm)
         train_accuracies[epoch] = accuracy
 
@@ -234,8 +239,7 @@ if __name__ == "__main__":
     # Model hyperparameters
     parser.add_argument(
         "--dataset",
-        # default="data/ukb_filtered_25753_harir_mh_upto69.csv",
-        default = "data/fully_balanced_ukb_filtered_25753_harir_mh_upto69.csv",
+        default= 'data/ukb_filtered_25753_harir_mh_upto69.csv',
         type=str,
         nargs="+",
         help='Path to dataset contaning eids and labels. Example: "data/gal_eids/gal_data.csv"',
@@ -254,8 +258,8 @@ if __name__ == "__main__":
     )
 
     # Optimizer hyperparameters
-    parser.add_argument("--lr", default=0.00001, type=float, help="Learning rate to use")
-    parser.add_argument("--batch_size", default=128, type=int, help="Minibatch size")
+    parser.add_argument("--lr", default=0.0001, type=float, help="Learning rate to use")
+    parser.add_argument("--batch_size", default=512, type=int, help="Minibatch size")
 
     # Other hyperparameters
     parser.add_argument("--epochs", default=50, type=int, help="Max number of epochs")
@@ -268,22 +272,12 @@ if __name__ == "__main__":
         type=str,
         help="Data directory where to find the dataset.",
     )
-    parser.add_argument(
-        "--oversampling",
-        action="store_true",
-        help="Use this option to add oversampling to the dataset.",
-    )
-    parser.add_argument(
-        "--dropout",
-        default=0.5,
-        type=float,
-        help="Dropout rate to use in the network",
-    )
 
     args = parser.parse_args()
     kwargs = vars(args)
 
     model, val_accuracies, test_accuracy, logging_info = train(**kwargs)
+
 
     print("Test accuracy: ", test_accuracy)
     # print("f1 score: ", logging_info["test_metrics"]["f1_beta"])
@@ -312,3 +306,5 @@ if __name__ == "__main__":
 
     print(val_accuracies)
     print(test_accuracy)
+
+    

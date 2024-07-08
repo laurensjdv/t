@@ -30,19 +30,22 @@ def generate_filtered_bulk(df, bulk_df):
     # get subset of filtered dataset which overlaps with bulk ieds
     df_fc_filtered = df[df['eid'].isin(datafield_ieds)]
     # remove invalid samples
-    df_fc_filtered = df_fc_filtered[df_fc_filtered['Lifetime dep Smith'] != '-1']
+    df_fc_filtered = df_fc_filtered[df_fc_filtered['gender'] != '-1']
     # generate bulk dataframe
     filtered_eids = list(df_fc_filtered['eid'])
     bulk_df = bulk_df[bulk_df['eid'].isin(filtered_eids)]
 
     bulk_df.to_csv(filename, sep=' ', index=False, header=False)
-    filename = 'ukb_filtered_' + data_field + '_harir_mh_upto69.csv'
-    labels = df_fc_filtered[['eid', 'Lifetime dep Smith']]
+    # filename = 'ukb_filtered_' + data_field + '_harir_mh_upto69.csv'
+    filename = "rds_over_8.csv"
+    labels = df_fc_filtered[['eid', 'gender','age', 'Lifetime dep Smith','rds4 >8']]
+    print(labels.head(50))
     labels.to_csv(filename, sep = ' ', index=False)
+    
 
 
 df = pd.read_csv('ukb_filtered_hariri_mh_upto69.csv', sep=' ')
-df_fc = pd.read_csv('ukb6771_25753.bulk', sep=' ', names = ['eid', 'data-field'])
+df_fc = pd.read_csv('ukb675871_25753.bulk', sep=' ', names = ['eid', 'data-field'])
 
 
 generate_filtered_bulk(df, df_fc)

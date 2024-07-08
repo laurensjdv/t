@@ -1,0 +1,33 @@
+program: GCN_wandb_search.py
+name: mrmr_gpu
+method: random
+metric:
+  goal: maximize
+  name: ACC
+parameters:
+  learning_rate:
+    min: 0.0000001
+    max: 0.001
+  batch_size:
+    distribution: q_log_uniform_values
+    q: 8
+    min: 32
+    max: 256
+  epochs:
+    value: 25
+  optimizer:
+    value: adam
+  dropout:
+    min: 0.0
+    max: 0.9
+  k_order:
+    values: [3, 5, 7, 9]
+  k_degree:
+    values: [2, 5, 10, 20]
+  mrmr:
+    value: True
+  
+  
+
+  
+    

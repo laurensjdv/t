@@ -11,11 +11,15 @@ from copy import deepcopy
 from tqdm.auto import tqdm
 from models.mlp import MLP
 from models.bin_mlp import binMLP
-from dataloader import FCMatrixDataset
+from models.GCN import GCN
+from dataloaders.dataloader import FCMatrixDataset
+from dataloaders.GCN_loader import GraphDataset
+from utils import balanced_random_split_v2
+
+from imblearn.over_sampling import RandomOverSampler
 
 
 from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
-from skorch import NeuralNetClassifier
 
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import random_split
@@ -27,11 +31,10 @@ import torch.nn as nn
 import torch.optim as optim
 
 
-# DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-DEVICE = torch.device("cpu")
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def evaluate_model(model, data_loader, num_classes=2):
+def evaluate_model(model, data_loader, num_classes=4):
     """
     Performs the evaluation of the MLP model on a given dataset.
 
@@ -42,7 +45,7 @@ def evaluate_model(model, data_loader, num_classes=2):
         metrics: A dictionary calculated using the conversion of the confusion matrix to metrics.
     """
     model.eval()
-    loss_module = nn.BCELoss()
+    loss_module = nn.CrossEntropyLoss()
     losses = []
 
     all_preds = []
@@ -50,40 +53,35 @@ def evaluate_model(model, data_loader, num_classes=2):
 
     for batch in data_loader:
         inputs = batch[0].to(DEVICE)
-        targets = batch[1].unsqueeze(1).float().to(DEVICE)
-            # targets = targets.unsqueeze(1).float().to(DEVICE)
+        targets = batch[1].to(DEVICE)
 
         with torch.no_grad():
             outputs = model(inputs)
             loss = loss_module(outputs, targets)
-            pred = torch.round(outputs).detach()
-
+            _, pred = torch.max(outputs, 1)
 
         losses.append(loss.item())
         all_preds.extend(pred.cpu().numpy())
         all_targets.extend(targets.cpu().numpy())
-        
-    cm = confusion_matrix(all_targets, all_preds, labels = range(num_classes))
-    precision, recall, f1, _ = precision_recall_fscore_support(all_targets, all_preds, labels=range(num_classes), average=None)
+    cm = confusion_matrix(all_targets, all_preds, labels=range(num_classes))
+
 
     accuracy = np.trace(cm) / np.sum(cm)
     metrics = {
         "loss": np.mean(losses),
         "accuracy": accuracy,
-        "precision": precision,
-        "recall": recall,
-        "f1": f1,
-        "conf_mat": cm
+        "conf_mat": cm,
     }
 
     return metrics, np.mean(losses)
 
 
-def train(dataset, hidden_dims, lr, batch_size, epochs, seed, data_dir, dropout, weight_decay):
+def train(model, dataset, hidden_dims, lr, use_batch_norm, batch_size, epochs, seed, data_dir, dropout, oversampling=False):
     """
     Args:
       hidden_dims: A list of ints, specificying the hidden dimensionalities to use in the MLP.
       lr: Learning rate of the SGD to apply.
+      use_batch_norm: If True, adds batch normalization layer into the network.
       batch_size: Minibatch size for the data loaders.
       epochs: Number of training epochs to perform.
       seed: Seed to use for reproducible results.
@@ -99,9 +97,10 @@ def train(dataset, hidden_dims, lr, batch_size, epochs, seed, data_dir, dropout,
 
     """
 
+    # Set the random seeds for reproducibility
     np.random.seed(seed)
     torch.manual_seed(seed)
-    if torch.cuda.is_available():  # GPU seed
+    if torch.cuda.is_available():  # GPU operation have separate seed
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
         torch.backends.cudnn.determinstic = True
@@ -116,32 +115,73 @@ def train(dataset, hidden_dims, lr, batch_size, epochs, seed, data_dir, dropout,
     #     cifar10, batch_size=batch_size, return_numpy=False
     # )
 
-    ds = FCMatrixDataset(dataset,data_dir, '25751', None)
-    
+    udi = data_dir.split("/")[-1]
+    udi = udi.split("_")[0]
+
+    if model == "MLP":
+        ds = FCMatrixDataset(dataset, data_dir, udi, 1)
+        model = MLP(1485, hidden_dims, 4).to(DEVICE)
+
+    elif model == "binMLP":
+        ds = FCMatrixDataset(dataset, data_dir, udi, 1)
+        model = binMLP(1485, hidden_dims, 2).to(DEVICE)
+    elif model == "GCN":
+        ds = GraphDataset(dataset, data_dir, udi, 1)
+        model = GCN(1485, 4, 10).to(DEVICE)
+
 
     total_size = len(ds)
-    train_size = int(.8* total_size)
-    val_size = int(.1 * total_size)
+    train_size = int(0.8 * total_size)
+    val_size = int(0.1 * total_size)
     test_size = total_size - train_size - val_size
 
-    train, val, test = random_split(ds, [train_size, val_size, test_size])
+    train, val, test = balanced_random_split_v2(ds, [train_size, val_size, test_size])
 
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test, batch_size=batch_size, shuffle=True)
 
+
+    test_labels = []
+    for batch in test_loader:
+        test_labels.extend(batch[1].numpy())
+
+    # count labels
+    test_labels = np.array(test_labels)
+    test_labels_counts = np.bincount(test_labels)
+    print(test_labels_counts)
+
+    if oversampling:
+        train_X = torch.tensor([])
+        train_Y = torch.tensor([], dtype=torch.int64)
+        for batch in train_loader:
+            inputs = batch[0]
+            targets = batch[1]
+            train_X = torch.cat((train_X, inputs), 0)
+            train_Y = torch.cat((train_Y, targets), 0)
+
+        train_Y_counts = np.bincount(train_Y)
+        max_idx = np.argmax(train_Y_counts)
+        train_Y_2nd_max = np.partition(train_Y_counts, -2)[-2]
+        sampling_strategy = {i: train_Y_2nd_max for i in range(4)}
+        sampling_strategy[max_idx] = train_Y_counts[max_idx]
+
+        ros = RandomOverSampler(random_state=seed, sampling_strategy=sampling_strategy)
+
+        train_X_resampled, train_Y_resampled = ros.fit_resample(train_X, train_Y)
+
+        train_Y_resampled = torch.tensor(train_Y_resampled, dtype=torch.int64)
+        train_X_resampled = torch.tensor(train_X_resampled, dtype=torch.float32)
+
+        train_data = torch.utils.data.TensorDataset(train_X_resampled, train_Y_resampled)
+        train_loader = DataLoader(
+            train_data, batch_size=batch_size, shuffle=True
+        )
     # Initialize model and loss module
-    # model = MLP(1485, hidden_dims, 4).to(DEVICE)
-    # model = binMLP(1485, hidden_dims).to(DEVICE)
-    model = binMLP(n_inputs=1485, n_hidden=hidden_dims, dropout=dropout).to(DEVICE)
     print(model)
 
-    # print model weights
-
-    # loss_module = nn.CrossEntropyLoss()
-    # loss_module = nn.BCEWithLogitsLoss()
-    loss_module = nn.BCELoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    loss_module = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(model.parameters(), lr=lr)
     # Training loop including validation
     train_loss = np.zeros(epochs)
     val_losses = np.zeros(epochs)
@@ -157,21 +197,14 @@ def train(dataset, hidden_dims, lr, batch_size, epochs, seed, data_dir, dropout,
         all_targets = []
         for inputs, targets in tqdm(train_loader):
             inputs = inputs.to(DEVICE)
-            targets = targets.unsqueeze(1).float().to(DEVICE)
-
-            # print device of input and targets
+            targets = targets.to(DEVICE)
 
             # Forward pass
+            print(inputs)
             outputs = model(inputs)
-            loss = loss_module(outputs, targets)
-            loss += model.l1_reg()
-            loss += model.l2_reg()
-            
+            loss = loss_module.forward(outputs, targets)
             train_losses.append(float(loss))
-            
-            pred = torch.round(outputs).detach()
-            # print(targets)
-            # print(pred)
+            _, pred = torch.max(outputs, 1)
 
             all_preds.extend(pred.cpu().numpy())
             all_targets.extend(targets.cpu().numpy())
@@ -180,9 +213,8 @@ def train(dataset, hidden_dims, lr, batch_size, epochs, seed, data_dir, dropout,
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-  
         train_loss[epoch] = np.mean(train_losses)
-        cm = confusion_matrix(all_targets, all_preds, labels = range(2))
+        cm = confusion_matrix(all_targets, all_preds, labels=range(4))
         accuracy = np.trace(cm) / np.sum(cm)
         train_accuracies[epoch] = accuracy
 
@@ -216,27 +248,35 @@ if __name__ == "__main__":
 
     # Model hyperparameters
     parser.add_argument(
+        "--model",
+        default="GCN",
+        type=str,
+        help='Model to use. Options: "MLP", "binMLP", "GCN"',
+    )
+    parser.add_argument(
         "--dataset",
-        default= 'data/gal_eids/gal_data.csv',
+        # default="data/ukb_filtered_25753_harir_mh_upto69.csv",
+        default = "data/fully_balanced_ukb_filtered_25753_harir_mh_upto69.csv",
         type=str,
         nargs="+",
         help='Path to dataset contaning eids and labels. Example: "data/gal_eids/gal_data.csv"',
     )
     parser.add_argument(
         "--hidden_dims",
-        # default=[512, 512, 128, 128, 64, 32],
-        # default=[564],
-        default= [],
+        default=[512, 512, 128, 128, 64, 32],
         type=int,
         nargs="+",
         help='Hidden dimensionalities to use inside the network. To specify multiple, use " " to separate them. Example: "256 128"',
     )
+    parser.add_argument(
+        "--use_batch_norm",
+        action="store_true",
+        help="Use this option to add Batch Normalization layers to the MLP.",
+    )
 
     # Optimizer hyperparameters
     parser.add_argument("--lr", default=0.00001, type=float, help="Learning rate to use")
-    parser.add_argument("--weight_decay", default=0.0001, type=float, help="Weight decay to use")
-    parser.add_argument("--dropout", default=0.1, type=float, help="Dropout rate to use")
-    parser.add_argument("--batch_size", default=32, type=int, help="Minibatch size")
+    parser.add_argument("--batch_size", default=128, type=int, help="Minibatch size")
 
     # Other hyperparameters
     parser.add_argument("--epochs", default=50, type=int, help="Max number of epochs")
@@ -245,16 +285,26 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--data_dir",
-        default="data/fetched/25751_gal",
+        default="data/fetched/25751",
         type=str,
         help="Data directory where to find the dataset.",
+    )
+    parser.add_argument(
+        "--oversampling",
+        action="store_true",
+        help="Use this option to add oversampling to the dataset.",
+    )
+    parser.add_argument(
+        "--dropout",
+        default=0.5,
+        type=float,
+        help="Dropout rate to use in the network",
     )
 
     args = parser.parse_args()
     kwargs = vars(args)
 
     model, val_accuracies, test_accuracy, logging_info = train(**kwargs)
-
 
     print("Test accuracy: ", test_accuracy)
     # print("f1 score: ", logging_info["test_metrics"]["f1_beta"])
@@ -276,8 +326,6 @@ if __name__ == "__main__":
 
     # add legend to confusion matrix
     plt.colorbar()
-    # set color range from 0 to max value in confusion matrix
-    plt.clim(0, max(test_metrics["conf_mat"].flatten()))
     # add axis labels to confusion matrix
     plt.xlabel("predicted")
     plt.ylabel("true")
@@ -285,5 +333,3 @@ if __name__ == "__main__":
 
     print(val_accuracies)
     print(test_accuracy)
-
-    

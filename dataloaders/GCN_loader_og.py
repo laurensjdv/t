@@ -3,6 +3,23 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from pathlib import Path
+
+
+import sys
+import os
+
+# Assuming your current script is directly inside a subfolder of 't'
+# Get the absolute path to the 't' folder
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+# Check if the parent directory's name is 't'. If not, adjust the path accordingly.
+if os.path.basename(parent_dir) == 't':
+    sys.path.append(parent_dir)
+else:
+    raise Exception("The script is not located in a subfolder of 't'")
+
+# Import the utils module from the 't' folder
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -10,118 +27,46 @@ import os
 import numpy as np
 
 import torch
-from torch.utils.data import Dataset, DataLoader, Subset
+from torch.utils.data import  Subset
 
 from imblearn.over_sampling import RandomOverSampler
 
 from torch.utils.data.dataset import random_split
-
+from torch_geometric.utils import dense_to_sparse
+from torch_geometric.data import Dataset, Data
+from torch_geometric.loader import DataLoader
+from torch_geometric.data.collate import collate
+from scipy.sparse import coo_matrix
 
 from collections import Counter
 
 from torch.utils.data import SubsetRandomSampler
 
-def balanced_random_split(dataset, lengths):
-    """
-    Args:
-      dataset: A torch.utils.data.Dataset instance.
-      lengths: A list of ints, specifying the lengths of the splits to make.
-    Returns:
-      A list of torch.utils.data.SubsetRandomSampler instances, one for each split.
-    """
-    # Get the number of items in the dataset
-    n = len(dataset)
-
-    # get index of first instance of class 1
-    m = int(n/2)
-
-    class_0_idx = list(range(m))
-    class_1_idx = list(range(m, n))
-    # Create a list of indices for the dataset
-
-    c0_lengths = [int(l/2) for l in lengths]
-    c1_lengths = [l - c0 for l, c0 in zip(lengths, c0_lengths)]
-    c0_split_indices = [class_0_idx[i:i + l] for i, l in enumerate(c0_lengths)]
-    c1_split_indices = [class_1_idx[i:i + l] for i, l in enumerate(c1_lengths)]
+from utils import balanced_random_split_v2, compute_KNN_graph, fc_to_matrix, adjacency
+from utils import balanced_random_split
 
 
-
-    # combine the indices 
-    split_indices = [c0 + c1 for c0, c1 in zip(c0_split_indices, c1_split_indices)]
-
-    # shuffle the indices
-    for i in range(len(split_indices)):
-        np.random.shuffle(split_indices[i])
-
-    # create a list of subset samplers
-    samplers = [Subset(dataset, indices) for indices in split_indices]
-
-    return samplers
-
-def balanced_random_split_v2(dataset, subset_lengths, num_classes=4):
-    """
-    Args:
-      dataset: A torch.utils.data.Dataset instance, assumed to have an equally balanced class distribution.
-      lengths: A list of ints, specifying the lengths of the splits to make.
-      num_classes: The number of classes in the dataset.
-    Returns:
-      A list of torch.utils.data.SubsetRandomSampler instances, one for each split.
-    """
-    n = len(dataset)
-    
-    n_per_class = int(n / num_classes)
-    indices = list(range(n))
-
-    class_indices = []
-    for i in range(num_classes):
-        class_indices.append([idx for idx in indices if dataset[idx][1] == i])
-
-        
-    for i in range(num_classes):
-        np.random.shuffle(class_indices[i])
-
-    subsets_idxs = []
-    start_idx = 0
-    for l in subset_lengths:
-        l_per_class = int(l / num_classes)
-        subset_idx = []
-        for i in range(num_classes):
-            subset_idx.extend(class_indices[i][start_idx:start_idx + l_per_class])
-
-        start_idx += l_per_class
-        subsets_idxs.append(subset_idx)
-            
-    # calculate overlap between class_indices lists
-    overlap = [len(set(class_indices[i]) & set(class_indices[i+1])) for i in range(len(class_indices) - 1)]
-    print(overlap)
-
-    # calculate overlap between subeset_idxs lists
-    overlap = [len(set(subsets_idxs[i]) & set(subsets_idxs[i+1])) for i in range(len(subsets_idxs) - 1)]
-    print(overlap)
-
-    samplers = [Subset(dataset, indices) for indices in subsets_idxs]
-
-    return samplers
-
-
-
-class FCMatrixDataset(Dataset):
+class GraphDataset(Dataset):
     def __init__(self, ukb_filtered, dir, data_field, mapping, oversample=False):
         print(ukb_filtered)
         self.ukb_filtered = pd.read_csv(ukb_filtered, sep=' ', header=None)
         self.dir = dir
         self.data_field = data_field
-        if mapping is not None:
-            self.mapping ={'HC': 0, 'single ep.': 1, 'moderate rMDD': 2, 'severe rMDD': 3}
-        else:
-            self.mapping = [0, 1]
-
+        # if mapping is not None:
+        #     self.mapping ={'HC': 0, 'single ep.': 1, 'moderate rMDD': 2, 'severe rMDD': 3}
+        # else:
+        #     self.mapping = [0, 1]
+        self.mapping = mapping
         if oversample:
             ros = RandomOverSampler(random_state=0)
+
+   
+
 
 
     def __len__(self):
         return len(self.ukb_filtered)
+    
 
     def __getitem__(self, idx):
         eid = self.ukb_filtered.iloc[idx, 0]
@@ -134,14 +79,27 @@ class FCMatrixDataset(Dataset):
         with open(matrix_path, "r") as f:
             matrix = f.read().split()
         matrix = [float(item) for item in matrix]
-        matrix = torch.FloatTensor(matrix)
-        return matrix, enc_label
+        D = int((1 + np.sqrt(1 + 8 * len(matrix))) / 2)
+        matrix = fc_to_matrix(matrix, D)
+
+
+        x = torch.FloatTensor(matrix)
+        adj = compute_KNN_graph(matrix, k_degree=55)    
+        adj = torch.from_numpy(adj).float()
+        edge_index, edge_attr = dense_to_sparse(adj)
+        data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, y = torch.tensor([enc_label]))
+        return data
 
 if __name__ == "__main__":
-    # ds = FCMatrixDataset('data/ukb_filtered_25753_harir_mh_upto69.csv','data/fetched/25753', '25753', 1)
+    mapping = {'HC': 0, 'single ep.': 1, 'moderate rMDD': 2, 'severe rMDD': 3}
+    # mapping = {'HC': 0, 'severe rMDD': 1}
+    ds = GraphDataset('../data/ukb_filtered_25753_harir_mh_upto69.csv','../data/fetched/25751/raw', '25751', mapping)
     # ds = FCMatrixDataset('data/gal_eids/gal_data.csv','data/fetched/25753_gal', '25753', None)
-    ds = FCMatrixDataset('data/fully_balanced_ukb_filtered_25753_harir_mh_upto69.csv','data/fetched/25751', '25751', 1)
+    # ds = GraphDataset('../data/fully_severe_balanced_ukb_filtered_25753_harir_mh_upto69.csv','../data/fetched/25751', '25751', mapping)
     total_samples = len(ds)
+
+    print("y:")
+    print(ds[0][1])
 
     print(total_samples)
     train_ratio = 0.8
@@ -171,9 +129,12 @@ if __name__ == "__main__":
 
     print(f"Train size: {train_size}, Test size: {test_size}, Validation size: {val_size}")
 
-    train, val, test = balanced_random_split_v2(ds, [train_size, val_size, test_size], 4)
-
+    # train, val, test = balanced_random_split_v2(ds, [train_size, val_size, test_size], 4)
+    # train, val, test = balanced_random_split(ds, [train_size, val_size, test_size])
+    train, val, test = random_split(ds, [train_size, val_size, test_size])
     batch_size = 128
+
+ 
 
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=True)
@@ -186,6 +147,14 @@ if __name__ == "__main__":
     test_counts = {0: 0, 1: 0, 2: 0, 3: 0}
 
     for i, (inputs, targets) in enumerate(train_loader):
+        # input = inputs[0]
+        # x = input.x
+        # edge_index = input.edge_index
+        # edge_attr = input.edge_attr
+        # print(x.shape)
+        # print(edge_index.shape)
+        # print(edge_attr.shape)
+        # exit()
         for t in targets:
             train_counts[t.item()] += 1
             all_counts[t.item()] += 1
@@ -200,7 +169,7 @@ if __name__ == "__main__":
             test_counts[t.item()] += 1
             all_counts[t.item()] += 1
 
-    print(all_counts)
+    print(f"aLL COUNTS: {all_counts}")
     print(train_counts)
     print(val_counts)
     print(test_counts)

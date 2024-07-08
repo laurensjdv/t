@@ -11,8 +11,8 @@ from copy import deepcopy
 from tqdm.auto import tqdm
 from models.mlp import MLP
 from models.bin_mlp import binMLP
-from dataloader import FCMatrixDataset
-from dataloader import balanced_random_split_v2
+from dataloaders.dataloader import FCMatrixDataset
+from utils import balanced_random_split_v2
 
 from functools import partial
 
@@ -40,7 +40,7 @@ from sklearn.linear_model import ElasticNet
 
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# DEVICE = torch.device("cpu")
+
 
 
 def evaluate_model(model, data_loader, num_classes=4):
@@ -96,14 +96,19 @@ def train(dataset, seed, data_dir, udi, config=None, oversampling=False):
         torch.backends.cudnn.determinstic = True
         torch.backends.cudnn.benchmark = False
 
-    ds = FCMatrixDataset('data/fully_balanced_ukb_filtered_25753_harir_mh_upto69.csv', data_dir, udi, 1)
+    mapping = {'0': 0, '1': 1}
+    
+    data_dir = data_dir + "/raw"
+
+    ds = FCMatrixDataset(dataset, data_dir, udi, mapping=None)
 
     total_size = len(ds)
     train_size = int(0.8 * total_size)
     val_size = int(0.1 * total_size)
     test_size = total_size - train_size - val_size
+    n_classes = len(mapping)
 
-    train_d, val_d, test_d = balanced_random_split_v2(ds, [train_size, val_size, test_size])
+    train_d, val_d, test_d = balanced_random_split_v2(ds, [train_size, val_size, test_size], num_classes=n_classes)
 
     with wandb.init(config=config):
         config = wandb.config
@@ -146,7 +151,7 @@ def train(dataset, seed, data_dir, udi, config=None, oversampling=False):
         if udi == "25755":
             model = MLP(55, config.hidden_dims, 4).to(DEVICE)
         else:
-            model = MLP(1485, config.hidden_dims, 4).to(DEVICE)
+            model = MLP(1485, config.hidden_dims, 2).to(DEVICE)
 
         loss_module = nn.CrossEntropyLoss()
         if config["optimizer"] == "adam":
@@ -239,13 +244,13 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--data_dir",
-        default="data/fetched/25753",
+        default="data/fetched/25751",
         type=str,
         help="Data directory where to find the dataset.",
     )
     parser.add_argument(
         "--sweep_config",
-        default="elasticnet_config.yaml",
+        default="adam_config.yaml",
         type=str,
         help="Path to the sweep configuration file.",
     )
@@ -262,14 +267,17 @@ if __name__ == "__main__":
     udi = data_dir.split("/")[-1]
     udi = udi.split("_")[0]
     sweep_config_path = kwargs["sweep_config"]
+    dataset = kwargs["dataset"][0]
 
     with open(sweep_config_path, "r") as f:
         sweep_config = yaml.safe_load(f)
 
-    train_partial = partial(train, seed=kwargs["seed"], dataset=kwargs["dataset"], data_dir=kwargs["data_dir"], udi=udi, oversampling=kwargs["oversampling"])
+    train_partial = partial(train, seed=kwargs["seed"], dataset=dataset, data_dir=kwargs["data_dir"], udi=udi, oversampling=kwargs["oversampling"])
 
     print(sweep_config)
 
-    sweep_id = wandb.sweep(sweep_config, project=f"smith_{kwargs['oversampling']}_{sweep_config['name']}_{udi}")
-    wandb.agent(sweep_id, train_partial, count=100)
+    dataset_name = dataset.split("/")[-1].split(".")[0]
+
+    sweep_id = wandb.sweep(sweep_config, project=f"{dataset_name}_MLP_{sweep_config['name']}_{udi}")
+    wandb.agent(sweep_id, train_partial, count=200)
 

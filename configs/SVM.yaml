@@ -1,0 +1,19 @@
+program: SVM_wandb_cv.py
+name: reg
+method: random
+metric:
+  goal: maximize
+  name: ACC
+parameters:
+  udi:
+    value: 25751
+  C:
+    values: [0.01, 0.1, 1.0]
+  gamma:
+    values: [1, 0.1, 0.01, 0.001]
+  kernel:
+    values: ['linear', 'rbf', 'poly', 'sigmoid']
+  degree:
+    values: [3, 4, 5]
+  mrmr:
+    value: False
