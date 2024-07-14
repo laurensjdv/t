@@ -23,88 +23,6 @@ from collections import Counter
 
 from torch.utils.data import SubsetRandomSampler
 
-# def balanced_random_split(dataset, lengths):
-#     """
-#     Args:
-#       dataset: A torch.utils.data.Dataset instance.
-#       lengths: A list of ints, specifying the lengths of the splits to make.
-#     Returns:
-#       A list of torch.utils.data.SubsetRandomSampler instances, one for each split.
-#     """
-#     # Get the number of items in the dataset
-#     n = len(dataset)
-
-#     # get index of first instance of class 1
-#     m = int(n/2)
-
-#     class_0_idx = list(range(m))
-#     class_1_idx = list(range(m, n))
-#     # Create a list of indices for the dataset
-
-#     c0_lengths = [int(l/2) for l in lengths]
-#     c1_lengths = [l - c0 for l, c0 in zip(lengths, c0_lengths)]
-#     c0_split_indices = [class_0_idx[i:i + l] for i, l in enumerate(c0_lengths)]
-#     c1_split_indices = [class_1_idx[i:i + l] for i, l in enumerate(c1_lengths)]
-
-
-
-#     # combine the indices 
-#     split_indices = [c0 + c1 for c0, c1 in zip(c0_split_indices, c1_split_indices)]
-
-#     # shuffle the indices
-#     for i in range(len(split_indices)):
-#         np.random.shuffle(split_indices[i])
-
-#     # create a list of subset samplers
-#     samplers = [Subset(dataset, indices) for indices in split_indices]
-
-#     return samplers
-
-# def balanced_random_split_v2(dataset, subset_lengths, num_classes=4):
-#     """
-#     Args:
-#       dataset: A torch.utils.data.Dataset instance, assumed to have an equally balanced class distribution.
-#       lengths: A list of ints, specifying the lengths of the splits to make.
-#       num_classes: The number of classes in the dataset.
-#     Returns:
-#       A list of torch.utils.data.SubsetRandomSampler instances, one for each split.
-#     """
-#     n = len(dataset)
-    
-#     n_per_class = int(n / num_classes)
-#     indices = list(range(n))
-
-#     class_indices = []
-#     for i in range(num_classes):
-#         class_indices.append([idx for idx in indices if dataset[idx][1] == i])
-
-        
-#     for i in range(num_classes):
-#         np.random.shuffle(class_indices[i])
-
-#     subsets_idxs = []
-#     start_idx = 0
-#     for l in subset_lengths:
-#         l_per_class = int(l / num_classes)
-#         subset_idx = []
-#         for i in range(num_classes):
-#             subset_idx.extend(class_indices[i][start_idx:start_idx + l_per_class])
-
-#         start_idx += l_per_class
-#         subsets_idxs.append(subset_idx)
-            
-#     # calculate overlap between class_indices lists
-#     overlap = [len(set(class_indices[i]) & set(class_indices[i+1])) for i in range(len(class_indices) - 1)]
-#     print(overlap)
-
-#     # calculate overlap between subeset_idxs lists
-#     overlap = [len(set(subsets_idxs[i]) & set(subsets_idxs[i+1])) for i in range(len(subsets_idxs) - 1)]
-#     print(overlap)
-
-#     samplers = [Subset(dataset, indices) for indices in subsets_idxs]
-
-#     return samplers
-
 
 
 class FCMatrixDataset(Dataset):
@@ -129,6 +47,7 @@ class FCMatrixDataset(Dataset):
 
         eid = eid[idx]
         filename = str(eid) + '_' + self.data_field + '_2_0.txt'
+        print(filename)
 
         matrix_path = os.path.join(self.dir, filename)
         label = self.ukb_filtered[:,1][idx]
@@ -142,8 +61,13 @@ class FCMatrixDataset(Dataset):
         with open(matrix_path, "r") as f:
             matrix = f.read().split()
         matrix = np.array([float(item) for item in matrix])
+        print(f"idx 1140 {matrix[1140]}")
+        print(f"idx 536 {matrix[689]}")
         if self.mrmr is not None:
             matrix = matrix[self.mrmr]
+
+        print(f"idx 0 {matrix[0]}") 
+        print(f"idx 1 {matrix[1]}")
         matrix = torch.FloatTensor(matrix)
         return matrix, enc_label
 
@@ -152,10 +76,12 @@ class FCMatrixDataset(Dataset):
 
 if __name__ == "__main__":
 
-    mrmr_features = np.array([1140, 536, 223, 907, 1449, 499, 1293, 45, 135, 1440, 879, 1384, 1210, 1316, 122, 22, 492, 638, 765, 1027, 1464, 501, 1462, 395, 26, 1079, 70, 425, 1403, 1409, 1318, 886, 1459, 1448, 939, 1163, 547, 10, 413, 676, 131, 216, 942, 1136, 1386, 232, 1455, 1337, 814, 139, 392, 1376, 1382, 471, 656]
-                             )
-    ds = FCMatrixDataset('../data/csv/severe_rds.csv','../data/fetched/raw/25751', '25751', mrmr=mrmr_features, mapping=None)
-    ds2 = FCMatrixDataset('../data/csv/severe_rds.csv','../data/fetched/raw/25751', '25751', None, mapping=None)
+    # mrmr_features = np.array([1140, 536, 223, 907, 1449, 499, 1293, 45, 135, 1440, 879, 1384, 1210, 1316, 122, 22, 492, 638, 765, 1027, 1464, 501, 1462, 395, 26, 1079, 70, 425, 1403, 1409, 1318, 886, 1459, 1448, 939, 1163, 547, 10, 413, 676, 131, 216, 942, 1136, 1386, 232, 1455, 1337, 814, 139, 392, 1376, 1382, 471, 656]
+                             
+    mrmr_features = np.array([1140, 689, 427, 122, 139, 765, 907, 1384, 22, 1293, 1449, 492, 1440, 499, 1316, 1318, 135, 879, 886, 223, 1455, 676, 1136, 1464, 70, 1462, 1386, 939, 111, 413, 10, 1403, 1027, 547, 395, 1210, 942, 501, 45, 425, 638, 505, 26, 1409, 1448, 605, 232, 1459, 821, 1394, 1376, 809, 1163, 216, 791]
+    )
+    ds = FCMatrixDataset('../data/csv/severe_rds_v2.csv','../data/fetched/25751/raw', '25751', mrmr=mrmr_features, mapping=None)
+    # ds2 = FCMatrixDataset('../data/csv/severe_rds_v2.csv','../data/fetched/raw/25751', '25751', None, mapping=None)
 
     print(ds[0][0][1140])
     print(ds2[0][0][0])
